@@ -1,0 +1,18 @@
+{
+  "expo": {
+    "name": "Vestel Air Purifier",
+    "slug": "vestel-air-purifier",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "light",
+    "assetBundlePatterns": ["**/*"],
+    "ios": {
+      "supportsTablet": false
+    },
+    "android": {
+      "adaptiveIcon": {
+        "backgroundColor": "#A32323"
+      }
+    }
+  }
+}
