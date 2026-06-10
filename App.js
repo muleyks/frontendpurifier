@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useRef, useEffect, useState, createContext, useContext } from "react";
 import {
   SafeAreaView,
   ScrollView,
@@ -8,33 +8,67 @@ import {
   View,
   TextInput,
   StatusBar,
-  Dimensions
+  Dimensions,
+  Animated,
+  Easing,
 } from "react-native";
 import { NavigationContainer } from "@react-navigation/native";
 import { createNativeStackNavigator } from "@react-navigation/native-stack";
 import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
-import Svg, { Circle, Rect, Line, Path } from "react-native-svg";
+import Svg, { Circle, Path, G, Defs, RadialGradient, Stop, Ellipse } from "react-native-svg";
+import { LinearGradient } from "expo-linear-gradient";
 
 const Stack = createNativeStackNavigator();
-const { width } = Dimensions.get("window");
+const { width, height } = Dimensions.get("window");
 
-const colors = {
-  bg: "#FFFFFF",
-  soft: "#FAFAFA",
-  card: "#FFFFFF",
-  border: "#E7E7E7",
-  borderDark: "#D8D8D8",
-  text: "#111111",
-  sub: "#6B6B6B",
-  red: "#A32323",
-  redSoft: "#FFF4F4",
-  green: "#2EAD55",
-  orange: "#E39A2F",
-  danger: "#D04545"
+// ─── Palette (from design images) ────────────────────────────────────────────
+const CREAM = "#DDD7C1";
+const CREAM_RGB = "221,215,193";
+const FAN_CREAM_RGB = CREAM_RGB;
+const FAN_HUB = CREAM;
+
+const pal = {
+  teal:        "#4A8B7A",
+  khaki:       "#C5BC8A",
+  mauve:       "#B08D8D",
+  purple:      "#744C8B",
+  terracotta:  "#C87050",
+  burgundy:    "#8B2535",
+  white:       CREAM,
+  w88:         `rgba(${CREAM_RGB},0.88)`,
+  w70:         `rgba(${CREAM_RGB},0.70)`,
+  w55:         `rgba(${CREAM_RGB},0.55)`,
+  w30:         `rgba(${CREAM_RGB},0.30)`,
+  glass:       `rgba(${CREAM_RGB},0.10)`,
+  glassBorder: `rgba(${CREAM_RGB},0.16)`,
 };
 
+// ─── Gradient Presets ─────────────────────────────────────────────────────────
+// G_TEAL: Dashboard, Analytics, Filter — dark teal with visible depth
+const G_TEAL     = ["#5E9E8C", "#246B58", "#082818"];
+// G_WARM: Auth / Onboarding — warm khaki-brown
+const G_WARM     = ["#7A6E50", "#3C2E18", "#160E04"];
+// G_BURGUNDY: Aroma — deep red
+const G_BURGUNDY = ["#8B2535", "#4D1020", "#1A0508"];
+// G_NEUTRAL: Settings, Firmware, Pairing — dark neutral
+const G_NEUTRAL  = ["#303830", "#161E18", "#060908"];
+// G_PURPLE: Optional accent
+const G_PURPLE   = ["#5C3870", "#2E1840", "#120A1C"];
+// G_AUTH: AuthChoice — teal → mauve → deep purple
+const G_AUTH     = [pal.teal, pal.mauve, "#743058"];
+// G_MAUVE: Dashboard Welcome Home — soft mauve depth
+const G_MAUVE    = ["#C4A8A8", pal.mauve, "#3D2838"];
+// G_QUALITY: Air Quality & Filter — terracotta → teal → dusty mauve
+const G_QUALITY  = ["#DA7A59", "#4AACA9", "#BC9898"];
+// G_TERRACOTTA: Settings flow — warm terracotta ombre
+const G_TERRACOTTA = [pal.terracotta, "#A87D68", "#4A3428"];
+// G_TEAL_OMBRE: Fan Control — bright teal → deep forest
+const G_TEAL_OMBRE = ["#4AACA9", pal.teal, "#082818"];
+
+// ─── Routes ───────────────────────────────────────────────────────────────────
 const routes = [
   "Welcome",
+  "Dashboard",
   "Language",
   "AuthChoice",
   "SignIn",
@@ -51,7 +85,7 @@ const routes = [
   "PairingProgress",
   "PairingSuccess",
   "PairingError",
-  "Dashboard",
+  "FanControl",
   "SleepMode",
   "FilterMaintenance",
   "ReplaceFilter",
@@ -59,609 +93,1630 @@ const routes = [
   "Automation",
   "CustomAutomation",
   "Settings",
+  "Aroma",
   "DeviceManagement",
   "Notifications",
   "FirmwareAvailable",
   "FirmwareUpdating",
   "FirmwareComplete",
-  "UserProfile"
+  "UserProfile",
 ];
 
-function nextOf(name) {
-  const index = routes.indexOf(name);
-  return routes[Math.min(routes.length - 1, index + 1)];
-}
-
-function Screen({ children, padded = true }) {
+// ─── Layout Components ────────────────────────────────────────────────────────
+function DarkScreen({ children, gradient = G_NEUTRAL, padded = true, scroll = true }) {
+  const isQuality = gradient === G_QUALITY || gradient === G_TERRACOTTA;
+  const inner = scroll ? (
+    <ScrollView
+      contentContainerStyle={[
+        { gap: 14, paddingBottom: 32 },
+        padded && { paddingHorizontal: 22, paddingTop: 20 },
+      ]}
+      showsVerticalScrollIndicator={false}
+      keyboardShouldPersistTaps="handled"
+    >
+      {children}
+    </ScrollView>
+  ) : (
+    <View style={[{ flex: 1 }, padded && { paddingHorizontal: 22, paddingTop: 20 }]}>
+      {children}
+    </View>
+  );
   return (
-    <SafeAreaView style={styles.safe}>
-      <StatusBar barStyle="dark-content" />
-      <ScrollView
-        contentContainerStyle={[styles.screen, padded && styles.padded]}
-        showsVerticalScrollIndicator={false}
-      >
-        {children}
-      </ScrollView>
-    </SafeAreaView>
+    <LinearGradient
+      colors={gradient}
+      locations={isQuality ? [0, 0.5, 1] : undefined}
+      style={{ flex: 1 }}
+      start={isQuality ? { x: 0.05, y: 0 } : { x: 0.3, y: 0 }}
+      end={isQuality ? { x: 0.95, y: 1 } : { x: 0.7, y: 1 }}
+    >
+      <SafeAreaView style={{ flex: 1 }}>
+        <StatusBar barStyle="light-content" />
+        {inner}
+      </SafeAreaView>
+    </LinearGradient>
   );
 }
 
-function Header({ title, subtitle, navigation }) {
+function DarkHeader({ title, subtitle, navigation }) {
   return (
-    <View style={styles.header}>
-      <TouchableOpacity style={styles.back} onPress={() => navigation.goBack()}>
-        <Ionicons name="chevron-back" size={20} color={colors.text} />
-      </TouchableOpacity>
+    <View style={{ flexDirection: "row", alignItems: "center", gap: 12, marginBottom: 4 }}>
+      {navigation && (
+        <TouchableOpacity
+          style={{ width: 36, height: 36, borderRadius: 18, backgroundColor: pal.glass, alignItems: "center", justifyContent: "center", borderWidth: 1, borderColor: pal.glassBorder }}
+          onPress={() => navigation.goBack()}
+        >
+          <Ionicons name="chevron-back" size={18} color={pal.w88} />
+        </TouchableOpacity>
+      )}
       <View>
-        <Text style={styles.headerTitle}>{title}</Text>
-        {subtitle ? <Text style={styles.headerSub}>{subtitle}</Text> : null}
+        <Text style={{ fontSize: 18, fontWeight: "700", color: pal.white }}>{title}</Text>
+        {subtitle ? <Text style={{ fontSize: 12, color: pal.w55, marginTop: 2 }}>{subtitle}</Text> : null}
       </View>
     </View>
   );
 }
 
-function Button({ label, onPress, variant = "primary" }) {
+function GlassButton({ label, onPress, filled = false, color = pal.teal }) {
   return (
     <TouchableOpacity
-      activeOpacity={0.85}
-      style={[styles.button, variant === "secondary" && styles.buttonSecondary]}
+      activeOpacity={0.8}
+      style={[
+        { height: 52, borderRadius: 16, alignItems: "center", justifyContent: "center" },
+        filled
+          ? { backgroundColor: color }
+          : { backgroundColor: pal.glass, borderWidth: 1, borderColor: pal.glassBorder },
+      ]}
       onPress={onPress}
     >
-      <Text style={[styles.buttonText, variant === "secondary" && styles.buttonSecondaryText]}>
-        {label}
-      </Text>
+      <Text style={{ color: pal.white, fontWeight: "700", fontSize: 15 }}>{label}</Text>
     </TouchableOpacity>
   );
 }
 
-function Card({ children, style }) {
-  return <View style={[styles.card, style]}>{children}</View>;
+const MAUVE_BTN_TEXT = "#2A1A1A";
+
+function MauveOmbreButton({ label, onPress }) {
+  return (
+    <View style={{ width: "100%" }}>
+      <LinearGradient
+        colors={["rgba(22,14,4,0)", "rgba(176,141,141,0.18)", "rgba(176,141,141,0.45)"]}
+        locations={[0, 0.5, 1]}
+        start={{ x: 0.5, y: 1 }}
+        end={{ x: 0.5, y: 0 }}
+        style={{ borderRadius: 26, paddingTop: 14, paddingBottom: 2, paddingHorizontal: 2 }}
+      >
+        <TouchableOpacity activeOpacity={0.88} onPress={onPress}>
+          <LinearGradient
+            colors={["rgba(60,46,24,0.2)", "rgba(176,141,141,0.65)", pal.mauve, "#C4A0A0"]}
+            locations={[0, 0.35, 0.7, 1]}
+            start={{ x: 0.5, y: 1 }}
+            end={{ x: 0.5, y: 0 }}
+            style={{ borderRadius: 22, padding: 2 }}
+          >
+            <LinearGradient
+              colors={["#7A5C5C", pal.mauve, "#C9AAAA"]}
+              start={{ x: 0.5, y: 1 }}
+              end={{ x: 0.5, y: 0 }}
+              style={{ height: 50, borderRadius: 20, alignItems: "center", justifyContent: "center" }}
+            >
+              <Text style={{ color: MAUVE_BTN_TEXT, fontWeight: "700", fontSize: 15, letterSpacing: 0.5 }}>{label}</Text>
+            </LinearGradient>
+          </LinearGradient>
+        </TouchableOpacity>
+      </LinearGradient>
+    </View>
+  );
 }
 
-function Field({ label, value, secure }) {
+function SoftTerracottaOmbreButton({ label, onPress }) {
   return (
-    <View style={styles.fieldWrap}>
-      <Text style={styles.label}>{label}</Text>
-      <View style={styles.field}>
+    <View style={{ width: "100%" }}>
+      <LinearGradient
+        colors={["rgba(22,14,4,0)", "rgba(176,130,110,0.08)", "rgba(176,130,110,0.22)"]}
+        locations={[0, 0.5, 1]}
+        start={{ x: 0.5, y: 1 }}
+        end={{ x: 0.5, y: 0 }}
+        style={{ borderRadius: 26, paddingTop: 14, paddingBottom: 2, paddingHorizontal: 2 }}
+      >
+        <TouchableOpacity activeOpacity={0.9} onPress={onPress}>
+          <LinearGradient
+            colors={["rgba(60,46,24,0.12)", "rgba(168,125,104,0.38)", "#A87D68", CREAM]}
+            locations={[0, 0.4, 0.72, 1]}
+            start={{ x: 0.5, y: 1 }}
+            end={{ x: 0.5, y: 0 }}
+            style={{ borderRadius: 22, padding: 2 }}
+          >
+            <LinearGradient
+              colors={["#7A5E52", "#A87D68", CREAM]}
+              start={{ x: 0.5, y: 1 }}
+              end={{ x: 0.5, y: 0 }}
+              style={{ height: 50, borderRadius: 20, alignItems: "center", justifyContent: "center" }}
+            >
+              <Text style={{ color: CREAM, fontWeight: "600", fontSize: 15, letterSpacing: 0.4 }}>{label}</Text>
+            </LinearGradient>
+          </LinearGradient>
+        </TouchableOpacity>
+      </LinearGradient>
+    </View>
+  );
+}
+
+function GlassCard({ children, style }) {
+  return (
+    <View style={[{ backgroundColor: pal.glass, borderRadius: 20, borderWidth: 1, borderColor: pal.glassBorder, padding: 16, gap: 10 }, style]}>
+      {children}
+    </View>
+  );
+}
+
+function GlassField({ label, value = "", onChangeText, placeholder, secure, keyboardType, autoCapitalize = "none", editable }) {
+  const canEdit = editable ?? onChangeText != null;
+  return (
+    <View style={{ gap: 6 }}>
+      {label ? <Text style={{ color: pal.w55, fontSize: 12, fontWeight: "600" }}>{label}</Text> : null}
+      <View style={{ height: 50, borderRadius: 14, borderWidth: 1, borderColor: pal.glassBorder, backgroundColor: pal.glass, paddingHorizontal: 14, justifyContent: "center" }}>
         <TextInput
           value={value}
-          editable={false}
+          onChangeText={onChangeText}
+          placeholder={placeholder}
+          editable={canEdit}
           secureTextEntry={secure}
-          placeholderTextColor={colors.sub}
-          style={styles.input}
+          keyboardType={keyboardType}
+          autoCapitalize={autoCapitalize}
+          autoCorrect={false}
+          style={{ color: pal.w88, fontSize: 14, padding: 0 }}
+          placeholderTextColor={pal.w30}
         />
       </View>
     </View>
   );
 }
 
-function Product({ size = 160 }) {
-  const w = size * 0.64;
-  const h = size;
+function DarkRow({ icon, title, value, onPress, danger }) {
   return (
-    <View style={[styles.productBox, { width: size, height: size * 1.18 }]}>
-      <Svg width={size} height={size * 1.18} viewBox={`0 0 ${size} ${size * 1.18}`}>
-        <Circle cx={size / 2} cy={size * 1.08} r={size * 0.22} fill="#D9D9D9" opacity={0.5} />
-        <Rect x={(size - w) / 2} y={18} width={w} height={h} rx={size * 0.12} fill="#fff" stroke="#D8D8D8" />
-        <Rect x={(size - w * 0.55) / 2} y={32} width={w * 0.55} height={12} rx={6} fill="#E9E9E9" />
-        <Circle cx={size / 2} cy={70} r={10} fill={colors.green} />
-        {Array.from({ length: 8 }).map((_, i) => (
-          <Line
-            key={i}
-            x1={(size - w * 0.48) / 2}
-            x2={(size + w * 0.48) / 2}
-            y1={size * 0.48 + i * 8}
-            y2={size * 0.48 + i * 8}
-            stroke="#C9C9C9"
-            strokeWidth={2}
-            strokeLinecap="round"
-          />
-        ))}
-        <TextSvg x={size / 2 - 22} y={size * 0.9} text="VESTEL" />
-      </Svg>
-    </View>
-  );
-}
-
-function TextSvg({ x, y, text }) {
-  return null;
-}
-
-function BrandMark() {
-  return (
-    <View style={styles.brandMark}>
-      <Text style={styles.brandMarkText}>V</Text>
-    </View>
-  );
-}
-
-function MetricCard({ icon, value, label }) {
-  return (
-    <View style={styles.metricCard}>
-      <MaterialCommunityIcons name={icon} size={22} color={colors.red} />
-      <Text style={styles.metricValue}>{value}</Text>
-      <Text style={styles.metricLabel}>{label}</Text>
-    </View>
-  );
-}
-
-function Row({ icon, title, value, onPress, danger }) {
-  return (
-    <TouchableOpacity activeOpacity={0.85} style={styles.row} onPress={onPress}>
-      <MaterialCommunityIcons name={icon} size={20} color={danger ? colors.danger : colors.red} />
-      <View style={styles.rowText}>
-        <Text style={styles.rowTitle}>{title}</Text>
-      </View>
-      {value ? <Text style={styles.rowValue}>{value}</Text> : null}
-      <Ionicons name="chevron-forward" size={16} color={colors.sub} />
+    <TouchableOpacity
+      activeOpacity={0.8}
+      style={{ height: 60, borderRadius: 16, borderWidth: 1, borderColor: pal.glassBorder, backgroundColor: pal.glass, paddingHorizontal: 14, flexDirection: "row", alignItems: "center", gap: 12 }}
+      onPress={onPress}
+    >
+      <MaterialCommunityIcons name={icon} size={20} color={danger ? "#C84545" : pal.teal} />
+      <Text style={{ flex: 1, fontSize: 14, color: pal.w88, fontWeight: "600" }}>{title}</Text>
+      {value ? <Text style={{ color: pal.w55, fontSize: 12 }}>{value}</Text> : null}
+      <Ionicons name="chevron-forward" size={15} color={pal.w30} />
     </TouchableOpacity>
   );
 }
 
-function Toggle({ on = true }) {
+function Toggle({ on = true, activeColor = pal.teal, onPress }) {
+  const track = (
+    <View style={[{ width: 48, height: 28, borderRadius: 14, padding: 3 }, on ? { backgroundColor: activeColor } : { backgroundColor: "rgba(221,215,193,0.15)" }]}>
+      <View style={[{ width: 22, height: 22, borderRadius: 11, backgroundColor: CREAM }, on ? { alignSelf: "flex-end" } : { alignSelf: "flex-start" }]} />
+    </View>
+  );
+  return onPress ? (
+    <TouchableOpacity activeOpacity={0.85} onPress={onPress}>
+      {track}
+    </TouchableOpacity>
+  ) : (
+    track
+  );
+}
+
+function ProgressBar({ value = 0.7, color = pal.teal }) {
   return (
-    <View style={[styles.toggle, !on && styles.toggleOff]}>
-      <View style={[styles.knob, !on && styles.knobOff]} />
+    <View style={{ height: 6, borderRadius: 3, backgroundColor: "rgba(221,215,193,0.12)", overflow: "hidden" }}>
+      <View style={{ height: 6, borderRadius: 3, backgroundColor: color, width: `${value * 100}%` }} />
     </View>
   );
 }
 
-function Progress({ value = 0.7, color = colors.red }) {
+function SuccessMark({ icon = "checkmark", color = pal.teal, ombre }) {
+  const size = 86;
+  const c = size / 2;
+
+  if (ombre === "tealMauve") {
+    const markSize = 120;
+    const markC = markSize / 2;
+    const markR = markC - 4;
+    const glowPad = 22;
+    const totalSize = markSize + glowPad * 2;
+    const totalC = totalSize / 2;
+
+    return (
+      <View
+        style={{
+          alignSelf: "center",
+          width: totalSize,
+          height: totalSize,
+          alignItems: "center",
+          justifyContent: "center",
+          shadowColor: pal.mauve,
+          shadowOffset: { width: 0, height: 0 },
+          shadowOpacity: 0.45,
+          shadowRadius: 18,
+        }}
+      >
+        <Svg width={totalSize} height={totalSize} style={{ position: "absolute" }}>
+          <Defs>
+            <RadialGradient id="successTealMauve" cx="50%" cy="50%" r="50%">
+              <Stop offset="0%" stopColor={pal.teal} />
+              <Stop offset="38%" stopColor={pal.teal} stopOpacity="0.9" />
+              <Stop offset="62%" stopColor="#7D8C84" />
+              <Stop offset="88%" stopColor={pal.mauve} stopOpacity="0.85" />
+              <Stop offset="100%" stopColor={pal.mauve} />
+            </RadialGradient>
+            <RadialGradient id="successGlow" cx="50%" cy="50%" r="50%">
+              <Stop offset="68%" stopColor={pal.mauve} stopOpacity="0" />
+              <Stop offset="82%" stopColor={pal.mauve} stopOpacity="0.28" />
+              <Stop offset="92%" stopColor={pal.teal} stopOpacity="0.22" />
+              <Stop offset="100%" stopColor={pal.mauve} stopOpacity="0" />
+            </RadialGradient>
+          </Defs>
+          <Circle cx={totalC} cy={totalC} r={markR + 14} fill="url(#successGlow)" />
+          <Circle cx={totalC} cy={totalC} r={markR + 8} fill="none" stroke={pal.mauve} strokeWidth={10} strokeOpacity={0.12} />
+          <Circle cx={totalC} cy={totalC} r={markR + 4} fill="none" stroke={pal.teal} strokeWidth={6} strokeOpacity={0.18} />
+          <Circle cx={totalC} cy={totalC} r={markR} fill="url(#successTealMauve)" />
+          <Circle cx={totalC} cy={totalC} r={markR} fill="none" stroke={pal.mauve} strokeWidth={2.5} strokeOpacity={0.55} />
+        </Svg>
+        <Ionicons name={icon} size={56} color={CREAM} />
+      </View>
+    );
+  }
+
   return (
-    <View style={styles.progressTrack}>
-      <View style={[styles.progressFill, { width: `${value * 100}%`, backgroundColor: color }]} />
+    <View style={{ alignSelf: "center", width: size, height: size, borderRadius: c, backgroundColor: color, alignItems: "center", justifyContent: "center", marginVertical: 20, borderWidth: 2, borderColor: pal.glassBorder }}>
+      <Ionicons name={icon} size={44} color={CREAM} />
     </View>
   );
 }
 
-function Chart({ type = "line" }) {
+// ─── Specialized UI Components ────────────────────────────────────────────────
+function AuraOrb({ size = width * 0.88, variant = "warm", vivid = false }) {
+  const w = size;
+  const h = size * 1.18;
+  const cx = w / 2;
+  const cy = h / 2;
+  const id = variant === "teal" ? "Teal" : vivid ? "WarmVivid" : "Warm";
   return (
-    <Card>
-      <Text style={styles.sectionTitle}>{type === "bars" ? "Weekly PM2.5 trend" : "PM2.5 - last 24 hours"}</Text>
-      <Svg width="100%" height={130} viewBox="0 0 320 130">
-        {type === "bars" ? (
-          [64, 82, 70, 88, 96, 58, 52].map((h, i) => (
-            <Rect key={i} x={18 + i * 42} y={118 - h} width={26} height={h} rx={7} fill={colors.red} opacity={0.72} />
-          ))
+    <View style={{ width: w, height: h, alignItems: "center", justifyContent: "center" }}>
+      <Svg width={w} height={h} style={{ position: "absolute" }}>
+        <Defs>
+          {variant === "teal" ? (
+            <>
+              <RadialGradient id={`auraHalo${id}`} cx="50%" cy="50%" r="50%">
+                <Stop offset="0%" stopColor={pal.teal} stopOpacity="0" />
+                <Stop offset="50%" stopColor={pal.teal} stopOpacity="0.14" />
+                <Stop offset="75%" stopColor={pal.khaki} stopOpacity="0.22" />
+                <Stop offset="92%" stopColor="#5E9E8C" stopOpacity="0.32" />
+                <Stop offset="100%" stopColor={pal.teal} stopOpacity="0.18" />
+              </RadialGradient>
+              <RadialGradient id={`auraMid${id}`} cx="50%" cy="46%" r="50%">
+                <Stop offset="0%" stopColor={CREAM} stopOpacity="0.55" />
+                <Stop offset="40%" stopColor={pal.teal} stopOpacity="0.65" />
+                <Stop offset="72%" stopColor="#246B58" stopOpacity="0.30" />
+                <Stop offset="100%" stopColor={pal.teal} stopOpacity="0" />
+              </RadialGradient>
+              <RadialGradient id={`auraCore${id}`} cx="50%" cy="44%" r="50%">
+                <Stop offset="0%" stopColor={CREAM} stopOpacity="0.42" />
+                <Stop offset="22%" stopColor={CREAM} stopOpacity="0.50" />
+                <Stop offset="48%" stopColor={pal.teal} stopOpacity="0.38" />
+                <Stop offset="100%" stopColor={pal.teal} stopOpacity="0" />
+              </RadialGradient>
+            </>
+          ) : vivid ? (
+            <>
+              <RadialGradient id={`auraHalo${id}`} cx="50%" cy="50%" r="50%">
+                <Stop offset="0%" stopColor={pal.khaki} stopOpacity="0" />
+                <Stop offset="45%" stopColor={pal.mauve} stopOpacity="0.22" />
+                <Stop offset="72%" stopColor={pal.terracotta} stopOpacity="0.48" />
+                <Stop offset="90%" stopColor="#E8A878" stopOpacity="0.55" />
+                <Stop offset="100%" stopColor={pal.terracotta} stopOpacity="0.35" />
+              </RadialGradient>
+              <RadialGradient id={`auraMid${id}`} cx="50%" cy="46%" r="50%">
+                <Stop offset="0%" stopColor="#E8A878" stopOpacity="0.92" />
+                <Stop offset="35%" stopColor={pal.terracotta} stopOpacity="0.82" />
+                <Stop offset="58%" stopColor={pal.mauve} stopOpacity="0.72" />
+                <Stop offset="78%" stopColor={pal.purple} stopOpacity="0.48" />
+                <Stop offset="100%" stopColor={pal.purple} stopOpacity="0" />
+              </RadialGradient>
+              <RadialGradient id={`auraCore${id}`} cx="50%" cy="44%" r="50%">
+                <Stop offset="0%" stopColor={CREAM} stopOpacity="0.62" />
+                <Stop offset="20%" stopColor={pal.khaki} stopOpacity="0.78" />
+                <Stop offset="45%" stopColor={pal.terracotta} stopOpacity="0.65" />
+                <Stop offset="100%" stopColor={pal.mauve} stopOpacity="0" />
+              </RadialGradient>
+            </>
+          ) : (
+            <>
+              <RadialGradient id={`auraHalo${id}`} cx="50%" cy="50%" r="50%">
+                <Stop offset="0%" stopColor={pal.khaki} stopOpacity="0" />
+                <Stop offset="50%" stopColor={pal.mauve} stopOpacity="0.10" />
+                <Stop offset="75%" stopColor={pal.terracotta} stopOpacity="0.28" />
+                <Stop offset="92%" stopColor={pal.terracotta} stopOpacity="0.38" />
+                <Stop offset="100%" stopColor={pal.terracotta} stopOpacity="0.22" />
+              </RadialGradient>
+              <RadialGradient id={`auraMid${id}`} cx="50%" cy="46%" r="50%">
+                <Stop offset="0%" stopColor={pal.terracotta} stopOpacity="0.75" />
+                <Stop offset="40%" stopColor={pal.mauve} stopOpacity="0.55" />
+                <Stop offset="72%" stopColor={pal.purple} stopOpacity="0.28" />
+                <Stop offset="100%" stopColor={pal.purple} stopOpacity="0" />
+              </RadialGradient>
+              <RadialGradient id={`auraCore${id}`} cx="50%" cy="44%" r="50%">
+                <Stop offset="0%" stopColor={CREAM} stopOpacity="0.38" />
+                <Stop offset="22%" stopColor={pal.khaki} stopOpacity="0.55" />
+                <Stop offset="48%" stopColor={pal.terracotta} stopOpacity="0.42" />
+                <Stop offset="100%" stopColor={pal.mauve} stopOpacity="0" />
+              </RadialGradient>
+            </>
+          )}
+        </Defs>
+        <Ellipse cx={cx} cy={cy} rx={w * 0.50} ry={h * 0.48} fill={`url(#auraHalo${id})`} />
+        <Ellipse cx={cx} cy={cy - 4} rx={w * 0.38} ry={h * 0.40} fill={`url(#auraMid${id})`} />
+        <Ellipse cx={cx} cy={cy - 8} rx={w * 0.24} ry={h * 0.28} fill={`url(#auraCore${id})`} />
+      </Svg>
+    </View>
+  );
+}
+
+function BounceHint({ text }) {
+  const bounce = useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    const anim = Animated.loop(
+      Animated.sequence([
+        Animated.timing(bounce, { toValue: -5, duration: 1100, easing: Easing.inOut(Easing.sin), useNativeDriver: true }),
+        Animated.timing(bounce, { toValue: 0, duration: 1100, easing: Easing.inOut(Easing.sin), useNativeDriver: true }),
+      ])
+    );
+    anim.start();
+    return () => anim.stop();
+  }, [bounce]);
+
+  return (
+    <Animated.Text
+      style={{
+        transform: [{ translateY: bounce }],
+        color: "rgba(221,215,193,0.45)",
+        fontSize: 11,
+        letterSpacing: 1.2,
+        textAlign: "center",
+        fontStyle: "italic",
+      }}
+    >
+      {text}
+    </Animated.Text>
+  );
+}
+
+function ScrollCue({ text }) {
+  const bounce = useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    const anim = Animated.loop(
+      Animated.sequence([
+        Animated.timing(bounce, {
+          toValue: -6,
+          duration: 1400,
+          easing: Easing.inOut(Easing.sin),
+          useNativeDriver: true,
+        }),
+        Animated.timing(bounce, {
+          toValue: 0,
+          duration: 1400,
+          easing: Easing.inOut(Easing.sin),
+          useNativeDriver: true,
+        }),
+      ])
+    );
+    anim.start();
+    return () => anim.stop();
+  }, [bounce]);
+
+  return (
+    <Animated.View style={{ alignItems: "center", gap: 6, transform: [{ translateY: bounce }] }}>
+      <Text
+        style={{
+          color: pal.khaki,
+          fontSize: 12,
+          letterSpacing: 2,
+          textTransform: "uppercase",
+          fontWeight: "600",
+          textAlign: "center",
+        }}
+      >
+        {text}
+      </Text>
+      <Ionicons name="chevron-down" size={18} color={pal.w55} />
+    </Animated.View>
+  );
+}
+
+function fanBladePath(c, s) {
+  return [
+    `M ${c} ${c}`,
+    `C ${c - 25 * s} ${c - 25 * s}, ${c - 50 * s} ${c - 55 * s}, ${c - 35 * s} ${c - 75 * s}`,
+    `C ${c - 20 * s} ${c - 92 * s}, ${c + 10 * s} ${c - 85 * s}, ${c + 30 * s} ${c - 65 * s}`,
+    `C ${c + 48 * s} ${c - 48 * s}, ${c + 45 * s} ${c - 20 * s}, ${c} ${c}`,
+    "Z",
+  ].join(" ");
+}
+
+function FanSpiral({ size = 220, bladeColors, centerColor }) {
+  const c = size / 2;
+  const s = size / 220;
+  const blades = bladeColors || [`rgba(${CREAM_RGB},0.82)`, `rgba(${CREAM_RGB},0.82)`, `rgba(${CREAM_RGB},0.82)`];
+  const hub = centerColor || CREAM;
+  const blade = fanBladePath(c, s);
+  return (
+    <Svg width={size} height={size} viewBox={`0 0 ${size} ${size}`}>
+      {[0, 120, 240].map((angle, i) => (
+        <G key={angle} transform={`rotate(${angle}, ${c}, ${c})`}>
+          <Path d={blade} fill={blades[i]} />
+        </G>
+      ))}
+      <Circle cx={c} cy={c} r={size * 0.07} fill={hub} />
+    </Svg>
+  );
+}
+
+function lerpHexColor(from, to, t) {
+  const parse = (hex) => {
+    const h = hex.replace("#", "");
+    return [parseInt(h.slice(0, 2), 16), parseInt(h.slice(2, 4), 16), parseInt(h.slice(4, 6), 16)];
+  };
+  const [r1, g1, b1] = parse(from);
+  const [r2, g2, b2] = parse(to);
+  const mix = (a, b) => Math.round(a + (b - a) * t);
+  return `#${[mix(r1, r2), mix(g1, g2), mix(b1, b2)].map((x) => x.toString(16).padStart(2, "0")).join("")}`;
+}
+
+const ORANGE_RING = pal.terracotta;
+const CREAM_RING = CREAM;
+
+function ringPoint(cx, cy, r, deg) {
+  const rad = ((deg - 90) * Math.PI) / 180;
+  return { x: cx + r * Math.cos(rad), y: cy + r * Math.sin(rad) };
+}
+
+function ringArc(cx, cy, r, startDeg, endDeg) {
+  const start = ringPoint(cx, cy, r, startDeg);
+  const end = ringPoint(cx, cy, r, endDeg);
+  const sweep = endDeg - startDeg;
+  return `M ${start.x} ${start.y} A ${r} ${r} 0 ${sweep > 180 ? 1 : 0} 1 ${end.x} ${end.y}`;
+}
+
+function TerracottaOmbreRing({ value, size, c, r }) {
+  const segments = 72;
+  const strokeW = 14;
+  const filledSegments = Math.round(segments * value);
+  const degPerSeg = 360 / segments;
+
+  return (
+    <>
+      {Array.from({ length: filledSegments }, (_, i) => {
+        const t = filledSegments <= 1 ? 0 : i / (filledSegments - 1);
+        const segColor = lerpHexColor(ORANGE_RING, CREAM_RING, t);
+        const startDeg = i * degPerSeg;
+        const endDeg = (i + 1) * degPerSeg + 0.6;
+        return (
+          <Path
+            key={i}
+            d={ringArc(c, c, r, startDeg, endDeg)}
+            fill="none"
+            stroke={segColor}
+            strokeWidth={strokeW}
+            strokeLinecap={i === 0 || i === filledSegments - 1 ? "round" : "butt"}
+          />
+        );
+      })}
+    </>
+  );
+}
+
+function CircleRing({ value = 0.78, size = 220, color = pal.teal, label = "", terracottaOmbre = false }) {
+  const c = size / 2;
+  const r = (size - 28) / 2;
+  const circ = 2 * Math.PI * r;
+  const offset = circ * (1 - value);
+  return (
+    <View style={{ alignItems: "center", justifyContent: "center", width: size, height: size }}>
+      <Svg width={size} height={size} style={{ position: "absolute" }}>
+        <Circle cx={c} cy={c} r={r} fill="none" stroke="rgba(221,215,193,0.12)" strokeWidth={14} />
+        {terracottaOmbre ? (
+          <TerracottaOmbreRing value={value} size={size} c={c} r={r} />
         ) : (
-          <>
-            <Path
-              d="M10 86 C45 25, 75 100, 110 54 S180 88, 216 45 S276 64, 310 36"
-              fill="none"
-              stroke={colors.red}
-              strokeWidth={4}
-              strokeLinecap="round"
-            />
-            {[10, 58, 110, 166, 216, 270, 310].map((x, i) => (
-              <Circle key={i} cx={x} cy={[86, 44, 54, 80, 45, 60, 36][i]} r={5} fill={colors.red} />
-            ))}
-          </>
+          <Circle
+            cx={c} cy={c} r={r} fill="none"
+            stroke={color} strokeWidth={14}
+            strokeDasharray={`${circ} ${circ}`}
+            strokeDashoffset={offset}
+            strokeLinecap="round"
+            transform={`rotate(-90, ${c}, ${c})`}
+          />
         )}
       </Svg>
-    </Card>
+      <View style={{ alignItems: "center" }}>
+        <Text style={{ color: pal.white, fontSize: size * 0.2, fontWeight: "300" }}>
+          {Math.round(value * 100)}<Text style={{ fontSize: size * 0.09 }}>%</Text>
+        </Text>
+        {label ? <Text style={{ color: pal.w55, fontSize: 12, marginTop: 4 }}>{label}</Text> : null}
+      </View>
+    </View>
+  );
+}
+
+function WeekChart() {
+  const points = [[10, 52], [58, 28], [110, 32], [166, 46], [216, 22], [270, 38], [310, 16]];
+  const d = `M ${points.map((p) => p.join(" ")).join(" L ")}`;
+  return (
+    <GlassCard>
+      <Text style={{ color: pal.w55, fontSize: 11, letterSpacing: 2.5, textAlign: "center" }}>
+        T{"   "}W{"   "}T{"   "}F{"   "}S{"   "}S{"   "}M
+      </Text>
+      <Svg width="100%" height={72} viewBox="0 0 320 72">
+        <Path d={d} fill="none" stroke="rgba(221,215,193,0.75)" strokeWidth={2.5} strokeLinecap="round" strokeLinejoin="round" />
+        {points.map(([x, y], i) => (
+          <Circle key={i} cx={x} cy={y} r={3.5} fill="rgba(221,215,193,0.90)" />
+        ))}
+      </Svg>
+      <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
+        <View>
+          <Text style={{ color: pal.white, fontSize: 22, fontWeight: "700" }}>Steady</Text>
+          <Text style={{ color: pal.teal, fontSize: 12, fontWeight: "600" }}>+12%</Text>
+        </View>
+        <TouchableOpacity style={{ flexDirection: "row", alignItems: "center", gap: 6, backgroundColor: pal.glass, paddingHorizontal: 14, paddingVertical: 8, borderRadius: 20, borderWidth: 1, borderColor: pal.glassBorder }}>
+          <MaterialCommunityIcons name="air-filter" size={14} color={pal.w70} />
+          <Text style={{ color: pal.w70, fontSize: 12, fontWeight: "600" }}>Filter status</Text>
+        </TouchableOpacity>
+      </View>
+    </GlassCard>
+  );
+}
+
+// ─── Language (shared) ────────────────────────────────────────────────────────
+const LANGUAGE_OPTIONS = [
+  { name: "English", code: "EN" },
+  { name: "Italian", code: "IT" },
+  { name: "Turkish", code: "TR" },
+];
+
+const LanguageContext = createContext(null);
+
+function LanguageProvider({ children }) {
+  const [language, setLanguage] = useState("English");
+  const langCode = LANGUAGE_OPTIONS.find((item) => item.name === language)?.code ?? "EN";
+
+  return (
+    <LanguageContext.Provider value={{ language, setLanguage, langCode, options: LANGUAGE_OPTIONS }}>
+      {children}
+    </LanguageContext.Provider>
+  );
+}
+
+function useLanguage() {
+  return useContext(LanguageContext);
+}
+
+// ─── Auth / Onboarding Screens ────────────────────────────────────────────────
+function LanguageSection({ onContinue, pageHeight }) {
+  const { language, setLanguage, options } = useLanguage();
+
+  const languages = options.map((item) => {
+    const isSelected = item.name === language;
+    return (
+      <TouchableOpacity
+        key={item.name}
+        activeOpacity={0.85}
+        onPress={() => setLanguage(item.name)}
+        style={[
+          { height: 56, borderRadius: 16, borderWidth: 1, paddingHorizontal: 16, flexDirection: "row", alignItems: "center", gap: 12 },
+          isSelected
+            ? { backgroundColor: `${pal.mauve}35`, borderColor: pal.mauve }
+            : { backgroundColor: pal.glass, borderColor: pal.glassBorder },
+        ]}
+      >
+        <Ionicons name="flag-outline" size={18} color={isSelected ? pal.mauve : pal.w55} />
+        <Text style={{ flex: 1, fontSize: 14, color: isSelected ? pal.white : pal.w70, fontWeight: "600" }}>{item.name}</Text>
+        {isSelected ? <Ionicons name="checkmark-circle" size={20} color={pal.mauve} /> : null}
+      </TouchableOpacity>
+    );
+  });
+
+  if (pageHeight) {
+    return (
+      <View style={{ height: pageHeight, paddingHorizontal: 22, paddingTop: 20, paddingBottom: 16 }}>
+        <View style={{ flex: 1, gap: 14, minHeight: 0 }}>
+          <View>
+            <Text style={{ fontSize: 18, fontWeight: "700", color: pal.white }}>Language</Text>
+            <Text style={{ fontSize: 12, color: pal.w55, marginTop: 2 }}>Choose your preferred language</Text>
+          </View>
+          {languages}
+        </View>
+        <View style={{ paddingTop: 12 }}>
+          <MauveOmbreButton label="Continue" onPress={onContinue} />
+        </View>
+      </View>
+    );
+  }
+
+  return (
+    <View style={{ paddingHorizontal: 22, paddingTop: 40, paddingBottom: 48, gap: 14 }}>
+      <View>
+        <Text style={{ fontSize: 18, fontWeight: "700", color: pal.white }}>Language</Text>
+        <Text style={{ fontSize: 12, color: pal.w55, marginTop: 2 }}>Choose your preferred language</Text>
+      </View>
+      {languages}
+      <View style={{ height: 12 }} />
+      <MauveOmbreButton label="Continue" onPress={onContinue} />
+    </View>
   );
 }
 
 function Welcome({ navigation }) {
+  const { langCode } = useLanguage();
+  const [pageHeight, setPageHeight] = useState(0);
+  const auraSize = pageHeight ? Math.min(width * 0.88, pageHeight * 0.42) : width * 0.88;
+  const fanSize = pageHeight ? Math.min(width * 0.48, pageHeight * 0.2) : width * 0.48;
+
   return (
-    <Screen>
-      <View style={styles.topBrand}><BrandMark /><Text style={styles.lang}>US</Text></View>
-      <Card style={styles.hero}>
-        <Text style={styles.welcome}>WELCOME</Text>
-        <Text style={styles.subtitle}>pure air for every breath</Text>
-        <Product size={190} />
-      </Card>
-      <Button label="Get started" onPress={() => navigation.navigate("Language")} />
-    </Screen>
+    <LinearGradient colors={G_WARM} style={{ flex: 1 }} start={{ x: 0.3, y: 0 }} end={{ x: 0.7, y: 1 }}>
+      <SafeAreaView style={{ flex: 1 }}>
+        <StatusBar barStyle="light-content" />
+        <View style={{ flex: 1 }} onLayout={(e) => setPageHeight(e.nativeEvent.layout.height)}>
+          {pageHeight > 0 && (
+            <ScrollView
+              style={{ flex: 1 }}
+              showsVerticalScrollIndicator={false}
+              bounces
+              decelerationRate="normal"
+              scrollEventThrottle={16}
+              snapToInterval={pageHeight}
+              snapToAlignment="start"
+              disableIntervalMomentum
+            >
+              <View style={{ height: pageHeight, paddingHorizontal: 28, paddingTop: 12, paddingBottom: 16 }}>
+                <View style={{ flexDirection: "row", justifyContent: "flex-end" }}>
+                  <Text style={{ color: pal.w55, fontSize: 12, letterSpacing: 1 }}>{langCode}</Text>
+                </View>
+
+                <View style={{ flex: 1, alignItems: "center", justifyContent: "center", minHeight: 0 }}>
+                  <View style={{ alignItems: "center", justifyContent: "center" }}>
+                    <View style={{ position: "absolute", alignItems: "center", justifyContent: "center" }}>
+                      <AuraOrb size={auraSize} vivid />
+                    </View>
+                    <View style={{ alignItems: "center", gap: 10 }}>
+                      <Text style={{ color: pal.khaki, fontSize: 11, letterSpacing: 4, textTransform: "uppercase", fontWeight: "600" }}>Vestel</Text>
+                      <Text style={{ color: pal.white, fontSize: 32, fontWeight: "200", letterSpacing: 1, fontStyle: "italic" }}>Air Purifier</Text>
+                      <FanSpiral size={fanSize} />
+                      <Text style={{ color: pal.w55, fontSize: 13, letterSpacing: 1 }}>pure air for every breath</Text>
+                    </View>
+                  </View>
+                </View>
+
+                <View style={{ alignItems: "center", paddingTop: 8, paddingBottom: 4 }}>
+                  <ScrollCue text="scroll to get started" />
+                </View>
+              </View>
+
+              <LanguageSection onContinue={() => navigation.navigate("AuthChoice")} pageHeight={pageHeight} />
+            </ScrollView>
+          )}
+        </View>
+      </SafeAreaView>
+    </LinearGradient>
   );
 }
 
-function Language({ navigation }) {
+function Language({ navigation, route }) {
+  const fromSettings = route?.params?.fromSettings;
+
   return (
-    <Screen>
-      <Header title="Choose Language" subtitle="Select your preferred app language" navigation={navigation} />
-      {["Turkish", "English", "Italian"].map((item) => (
-        <TouchableOpacity key={item} style={[styles.row, item === "English" && styles.selectedRow]}>
-          <Ionicons name="flag-outline" size={18} color={item === "English" ? colors.red : colors.sub} />
-          <Text style={[styles.rowTitle, item === "English" && { color: colors.red }]}>{item}</Text>
-          {item === "English" ? <Ionicons name="checkmark-circle" size={20} color={colors.red} /> : null}
-        </TouchableOpacity>
-      ))}
-      <View style={styles.spacer} />
-      <Button label="Continue" onPress={() => navigation.navigate("AuthChoice")} />
-    </Screen>
+    <DarkScreen gradient={G_WARM}>
+      {fromSettings ? <DarkHeader title="Language" navigation={navigation} /> : null}
+      <LanguageSection
+        onContinue={() => (fromSettings ? navigation.goBack() : navigation.navigate("AuthChoice"))}
+      />
+    </DarkScreen>
   );
 }
 
 function AuthChoice({ navigation }) {
   return (
-    <Screen>
-      <Card style={styles.hero}>
-        <Product size={210} />
-        <Text style={styles.title}>Vestel Air Purifier</Text>
-        <Text style={styles.subtitle}>Control air quality, sleep mode, filters, and automations.</Text>
-      </Card>
-      <Button label="Log In" onPress={() => navigation.navigate("SignIn")} />
-      <Button label="Sign Up" variant="secondary" onPress={() => navigation.navigate("CreateAccount")} />
-    </Screen>
+    <DarkScreen gradient={G_WARM} padded={false} scroll={false}>
+      <View style={{ flex: 1, paddingHorizontal: 28, paddingBottom: 48 }}>
+        <View style={{ height: height * 0.22 }} />
+        <View style={{ alignItems: "center", gap: 14, flex: 1, justifyContent: "flex-start" }}>
+          <FanSpiral
+            size={width * 0.5}
+            bladeColors={[`rgba(${CREAM_RGB},0.88)`, `rgba(${CREAM_RGB},0.88)`, `rgba(${CREAM_RGB},0.88)`]}
+            centerColor={CREAM}
+          />
+          <Text style={{ color: CREAM, fontSize: 26, fontWeight: "700" }}>My Purifier</Text>
+          <Text style={{ color: CREAM, fontSize: 13, textAlign: "center", lineHeight: 20 }}>
+            Control air quality, sleep mode, filters, and aroma.
+          </Text>
+        </View>
+        <View style={{ width: "100%" }}>
+          <MauveOmbreButton label="Log In" onPress={() => navigation.navigate("SignIn")} />
+          <TouchableOpacity
+            style={{ alignSelf: "flex-start", marginTop: 10, marginLeft: 6 }}
+            onPress={() => navigation.navigate("CreateAccount")}
+          >
+            <Text style={{ color: pal.w55, fontSize: 12 }}>
+              Don't have an account?{" "}
+              <Text style={{ textDecorationLine: "underline", color: pal.khaki }}>Sign Up</Text>
+            </Text>
+          </TouchableOpacity>
+        </View>
+      </View>
+    </DarkScreen>
   );
 }
 
 function SignIn({ navigation }) {
+  const [rememberMe, setRememberMe] = useState(false);
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+
   return (
-    <Screen>
-      <Header title="Sign In" subtitle="Enter your email and password" navigation={navigation} />
-      <Field label="Email" value="Your email" />
-      <Field label="Password" value="Password" secure />
-      <View style={styles.inline}>
-        <Toggle on={false} />
-        <Text style={styles.small}>Remember me</Text>
+    <DarkScreen gradient={G_WARM}>
+      <DarkHeader title="Login" subtitle="Enter your credentials" navigation={navigation} />
+      <GlassField label="Email" value={email} onChangeText={setEmail} placeholder="Your email" keyboardType="email-address" />
+      <GlassField label="Password" value={password} onChangeText={setPassword} placeholder="Password" secure />
+      <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
+        <Toggle
+          on={rememberMe}
+          activeColor={pal.mauve}
+          onPress={() => setRememberMe((v) => !v)}
+        />
+        <Text style={{ color: pal.w55, fontSize: 12, flex: 1 }}>Remember me</Text>
         <TouchableOpacity onPress={() => navigation.navigate("ForgotPassword")}>
-          <Text style={styles.link}>Forgot password?</Text>
+          <Text style={{ color: pal.khaki, fontWeight: "700", fontSize: 12 }}>Forgot password?</Text>
         </TouchableOpacity>
       </View>
-      <Button label="LOGIN" onPress={() => navigation.navigate("AddDevice")} />
-      <Text style={styles.or}>or</Text>
-      <Button label="Continue with Google" variant="secondary" onPress={() => navigation.navigate("AddDevice")} />
-      <View style={styles.spacer} />
-      <TouchableOpacity onPress={() => navigation.navigate("CreateAccount")}>
-        <Text style={styles.centerText}>Don't have an account? <Text style={styles.link}>Sign up</Text></Text>
-      </TouchableOpacity>
-    </Screen>
+      <MauveOmbreButton label="Log In" onPress={() => navigation.navigate("AddDevice")} />
+      <Text style={{ textAlign: "center", color: pal.w30, fontSize: 12 }}>or</Text>
+      <GlassButton label="Continue with Google" onPress={() => navigation.navigate("AddDevice")} />
+    </DarkScreen>
   );
 }
 
 function CreateAccount({ navigation }) {
+  const [email, setEmail] = useState("");
+
   return (
-    <Screen>
-      <Header title="Create new account" subtitle="Enter your email to sign up" navigation={navigation} />
-      <Text style={styles.brandTitle}>VESTEL AIR PURIFIER</Text>
-      <Field label="Email" value="ceng318@hotmail.com" />
-      <Button label="Create an account" onPress={() => navigation.navigate("VerifyEmail")} />
-      <Text style={styles.or}>or</Text>
-      <Button label="Continue with Google" variant="secondary" onPress={() => navigation.navigate("VerifyEmail")} />
-      <View style={styles.spacer} />
-      <Text style={styles.legal}>By clicking continue, you agree to the Terms of Service and Privacy Policy.</Text>
-    </Screen>
+    <DarkScreen gradient={G_WARM}>
+      <DarkHeader title="Create Account" subtitle="Enter your email to sign up" navigation={navigation} />
+      <Text style={{ color: pal.khaki, fontSize: 13, fontWeight: "600", letterSpacing: 2, textAlign: "center", marginVertical: 8 }}>
+        VESTEL AIR PURIFIER
+      </Text>
+      <GlassField label="Email" value={email} onChangeText={setEmail} placeholder="Your email" keyboardType="email-address" />
+      <MauveOmbreButton label="Create an account" onPress={() => navigation.navigate("VerifyEmail")} />
+      <Text style={{ textAlign: "center", color: pal.w30, fontSize: 12 }}>or</Text>
+      <GlassButton label="Continue with Google" onPress={() => navigation.navigate("VerifyEmail")} />
+      <View style={{ flexGrow: 1, minHeight: 18 }} />
+      <Text style={{ textAlign: "center", color: pal.w30, fontSize: 10, lineHeight: 16 }}>
+        By clicking continue, you agree to the Terms of Service and Privacy Policy.
+      </Text>
+    </DarkScreen>
   );
 }
 
 function VerifyEmail({ navigation }) {
+  const [code, setCode] = useState(["", "", "", "", "", ""]);
+  const codeRefs = useRef([]);
+
+  const handleCodeChange = (text, index) => {
+    const digit = text.replace(/[^0-9]/g, "").slice(-1);
+    const next = [...code];
+    next[index] = digit;
+    setCode(next);
+    if (digit && index < 5) {
+      codeRefs.current[index + 1]?.focus();
+    }
+  };
+
   return (
-    <Screen>
-      <Header title="Verify email" subtitle="We sent a 6 digit code" navigation={navigation} />
-      <Text style={styles.body}>Please enter the code sent to ceng318@hotmail.com.</Text>
-      <View style={styles.otpRow}>{[1, 2, 3, 4, 5, 6].map((i) => <View key={i} style={styles.otp}><Text>{i < 4 ? i : ""}</Text></View>)}</View>
-      <Button label="Verify email" onPress={() => navigation.navigate("CreatePassword")} />
-      <Button label="Send to different email" variant="secondary" onPress={() => navigation.goBack()} />
-    </Screen>
+    <DarkScreen gradient={G_WARM}>
+      <DarkHeader title="Verify Email" subtitle="Check your inbox" navigation={navigation} />
+      <Text style={{ color: pal.w70, fontSize: 14, lineHeight: 22 }}>
+        Enter the 6-digit code sent to your email
+      </Text>
+      <View style={{ flexDirection: "row", gap: 8, justifyContent: "space-between" }}>
+        {code.map((digit, i) => (
+          <View key={i} style={{ width: (width - 44 - 40) / 6, height: 52, borderRadius: 12, borderWidth: 1, borderColor: pal.glassBorder, backgroundColor: pal.glass, alignItems: "center", justifyContent: "center" }}>
+            <TextInput
+              ref={(ref) => { codeRefs.current[i] = ref; }}
+              value={digit}
+              onChangeText={(text) => handleCodeChange(text, i)}
+              keyboardType="number-pad"
+              maxLength={1}
+              style={{ color: pal.white, fontSize: 18, fontWeight: "700", textAlign: "center", width: "100%", height: "100%" }}
+            />
+          </View>
+        ))}
+      </View>
+      <MauveOmbreButton label="Verify Email" onPress={() => navigation.navigate("CreatePassword")} />
+      <GlassButton label="Send to different email" onPress={() => navigation.goBack()} />
+    </DarkScreen>
   );
 }
 
+const PASSWORD_RULES = [
+  { label: "8 characters minimum", test: (p) => p.length >= 8 },
+  { label: "A number", test: (p) => /\d/.test(p) },
+  { label: "A capital letter", test: (p) => /[A-Z]/.test(p) },
+];
+
 function CreatePassword({ navigation }) {
+  const [password, setPassword] = useState("");
+
+  const metRules = PASSWORD_RULES.map((rule) => rule.test(password));
+  const metCount = metRules.filter(Boolean).length;
+  const strength = metCount / PASSWORD_RULES.length;
+  const strengthLabel =
+    metCount === 0
+      ? "Password strength: weak"
+      : metCount === 1
+        ? "Password strength: fair"
+        : metCount === 2
+          ? "Password strength: good"
+          : "Password strength: strong";
+  const allMet = metCount === PASSWORD_RULES.length;
+
   return (
-    <Screen>
-      <Header title="Create password" subtitle="Password strength: strong" navigation={navigation} />
-      <Field label="Password" value="************" secure />
-      <Progress value={1} color={colors.green} />
-      <Card>
-        {["8 characters minimum", "A number", "A capital letter"].map((x) => (
-          <View key={x} style={styles.checkRow}>
-            <Ionicons name="checkmark-circle" size={18} color={colors.green} />
-            <Text style={styles.rowTitle}>{x}</Text>
-          </View>
-        ))}
-      </Card>
-      <Button label="Continue" onPress={() => navigation.navigate("AccountCreated")} />
-    </Screen>
+    <DarkScreen gradient={G_WARM}>
+      <DarkHeader title="Create Password" subtitle={strengthLabel} navigation={navigation} />
+      <GlassField label="Password" value={password} onChangeText={setPassword} placeholder="Password" secure />
+      <ProgressBar value={strength} color={pal.mauve} />
+      <GlassCard>
+        {PASSWORD_RULES.map((rule, index) => {
+          const met = metRules[index];
+          return (
+            <View key={rule.label} style={{ flexDirection: "row", gap: 10, alignItems: "center" }}>
+              <Ionicons
+                name={met ? "checkmark-circle" : "ellipse-outline"}
+                size={18}
+                color={met ? pal.mauve : pal.w30}
+              />
+              <Text style={{ color: met ? pal.w88 : pal.w55, fontSize: 14 }}>{rule.label}</Text>
+            </View>
+          );
+        })}
+      </GlassCard>
+      <MauveOmbreButton
+        label="Continue"
+        onPress={() => {
+          if (allMet) navigation.navigate("AccountCreated");
+        }}
+      />
+    </DarkScreen>
   );
 }
 
 function AccountCreated({ navigation }) {
   return (
-    <Screen>
-      <View style={styles.successMark}><Ionicons name="checkmark" size={46} color="#fff" /></View>
-      <Text style={styles.title}>Your account was successfully created</Text>
-      <Text style={styles.subtitle}>Only one click to explore online activation.</Text>
-      <View style={styles.spacer} />
-      <Button label="Log in" onPress={() => navigation.navigate("SignIn")} />
-    </Screen>
+    <DarkScreen gradient={G_WARM}>
+      <SuccessMark ombre="tealMauve" />
+      <Text style={{ fontSize: 24, fontWeight: "800", color: pal.white, textAlign: "center" }}>Account created!</Text>
+      <Text style={{ fontSize: 13, color: pal.w55, textAlign: "center", lineHeight: 20 }}>
+        Only one click to explore online activation.
+      </Text>
+      <View style={{ flexGrow: 1, minHeight: 20 }} />
+      <MauveOmbreButton label="Log in" onPress={() => navigation.navigate("SignIn")} />
+    </DarkScreen>
   );
 }
 
 function ForgotPassword({ navigation }) {
+  const [email, setEmail] = useState("");
+
   return (
-    <Screen>
-      <Header title="Forgot Password" subtitle="Reset your account access" navigation={navigation} />
-      <Text style={styles.title}>Forgot password?</Text>
-      <Text style={styles.subtitle}>Enter your email address and we will send you a secure reset link.</Text>
-      <Field label="Email" value="mesud@example.com" />
-      <Button label="Send reset link" onPress={() => navigation.navigate("ResetEmailSent")} />
-      <Button label="Back to sign in" variant="secondary" onPress={() => navigation.navigate("SignIn")} />
-    </Screen>
+    <DarkScreen gradient={G_WARM}>
+      <DarkHeader title="Forgot Password" navigation={navigation} />
+      <Text style={{ fontSize: 22, fontWeight: "700", color: pal.white }}>Reset your password</Text>
+      <Text style={{ fontSize: 13, color: pal.w55, lineHeight: 20 }}>
+        Enter your email and we'll send a secure reset link.
+      </Text>
+      <GlassField label="Email" value={email} onChangeText={setEmail} placeholder="Your email" keyboardType="email-address" />
+      <MauveOmbreButton label="Send reset link" onPress={() => navigation.navigate("ResetEmailSent")} />
+      <GlassButton label="Back to sign in" onPress={() => navigation.navigate("SignIn")} />
+    </DarkScreen>
   );
 }
 
 function ResetEmailSent({ navigation }) {
   return (
-    <Screen>
-      <View style={styles.successMark}><Ionicons name="mail" size={38} color="#fff" /></View>
-      <Text style={styles.title}>Reset email sent</Text>
-      <Text style={styles.subtitle}>Check your inbox for a password reset link.</Text>
-      <Row icon="email-outline" title="Sent to" value="mesud@example.com" />
-      <Button label="Open email app" onPress={() => navigation.navigate("PasswordResetSuccess")} />
-      <Button label="Back to sign in" variant="secondary" onPress={() => navigation.navigate("SignIn")} />
-    </Screen>
+    <DarkScreen gradient={G_WARM}>
+      <SuccessMark icon="mail" ombre="tealMauve" />
+      <Text style={{ fontSize: 24, fontWeight: "800", color: pal.white, textAlign: "center" }}>Check your inbox</Text>
+      <Text style={{ fontSize: 13, color: pal.w55, textAlign: "center" }}>
+        A reset link was sent to mesud@example.com
+      </Text>
+      <DarkRow icon="email-outline" title="mesud@example.com" value="Sent" />
+      <MauveOmbreButton label="Open email app" onPress={() => navigation.navigate("PasswordResetSuccess")} />
+      <GlassButton label="Back to sign in" onPress={() => navigation.navigate("SignIn")} />
+    </DarkScreen>
   );
 }
 
 function PasswordResetSuccess({ navigation }) {
   return (
-    <Screen>
-      <View style={styles.successMark}><Ionicons name="checkmark" size={46} color="#fff" /></View>
-      <Text style={styles.title}>Password reset</Text>
-      <Text style={styles.subtitle}>Your password was updated successfully.</Text>
-      <Button label="Back to sign in" onPress={() => navigation.navigate("SignIn")} />
-    </Screen>
+    <DarkScreen gradient={G_WARM}>
+      <SuccessMark ombre="tealMauve" />
+      <Text style={{ fontSize: 24, fontWeight: "800", color: pal.white, textAlign: "center" }}>Password reset</Text>
+      <Text style={{ fontSize: 13, color: pal.w55, textAlign: "center" }}>
+        Your password was updated successfully.
+      </Text>
+      <View style={{ flexGrow: 1, minHeight: 20 }} />
+      <MauveOmbreButton label="Back to sign in" onPress={() => navigation.navigate("SignIn")} />
+    </DarkScreen>
   );
 }
 
+// ─── Pairing Screens ──────────────────────────────────────────────────────────
 function AddDevice({ navigation }) {
   return (
-    <Screen>
-      <Header title="Find your device" subtitle="Nearby purifier" navigation={navigation} />
-      <Row icon="air-purifier" title="Vestel VHT-402 WiFi" value="Ready" onPress={() => navigation.navigate("DeviceFound")} />
-      <View style={styles.spacer} />
-      <Button label="Can't see my device" variant="secondary" onPress={() => navigation.navigate("WifiCredentials")} />
-    </Screen>
+    <DarkScreen gradient={G_WARM}>
+      <DarkHeader title="Find Device" subtitle="Nearby purifiers" navigation={navigation} />
+      <DarkRow icon="air-purifier" title="Vestel VHT-402 WiFi" value="Ready" onPress={() => navigation.navigate("DeviceFound")} />
+      <View style={{ flexGrow: 1 }} />
+      <GlassButton label="Can't see my device" onPress={() => navigation.navigate("WifiCredentials")} />
+    </DarkScreen>
   );
 }
 
 function DeviceFound({ navigation }) {
   return (
-    <Screen>
-      <Header title="Device found" subtitle="Vestel VHT-402 WiFi is ready to pair" navigation={navigation} />
-      <Card style={styles.hero}>
-        <Product size={170} />
-        <Text style={styles.title}>Vestel VHT-402 WiFi</Text>
-        <Text style={styles.subtitle}>Signal strong • Living Room</Text>
-      </Card>
-      <Button label="Pair this purifier" onPress={() => navigation.navigate("WifiCredentials")} />
-    </Screen>
+    <DarkScreen gradient={G_WARM} padded={false} scroll={false}>
+      <View style={{ flex: 1, paddingHorizontal: 28, paddingTop: 28, paddingBottom: 44, justifyContent: "space-between" }}>
+        <DarkHeader title="Device Found" subtitle="Ready to pair" navigation={navigation} />
+        <View style={{ alignItems: "center", gap: 12 }}>
+          <FanSpiral
+            size={width * 0.52}
+            bladeColors={[`rgba(${CREAM_RGB},0.88)`, `rgba(${CREAM_RGB},0.88)`, `rgba(${CREAM_RGB},0.88)`]}
+            centerColor={CREAM}
+          />
+          <Text style={{ color: CREAM, fontSize: 22, fontWeight: "700" }}>Vestel VHT-402 WiFi</Text>
+          <Text style={{ color: CREAM, fontSize: 13, textAlign: "center", lineHeight: 20 }}>Signal strong · Living Room</Text>
+        </View>
+        <MauveOmbreButton label="Pair this purifier" onPress={() => navigation.navigate("WifiCredentials")} />
+      </View>
+    </DarkScreen>
   );
 }
 
 function WifiCredentials({ navigation }) {
+  const [noPassword, setNoPassword] = useState(false);
+  const [network, setNetwork] = useState("");
+  const [wifiPassword, setWifiPassword] = useState("");
+
   return (
-    <Screen>
-      <Header title="Connect to Wi-Fi" subtitle="Use a 2.4 GHz network" navigation={navigation} />
-      <Field label="Network name" value="Home_2.4G" />
-      <Field label="Password" value="**********" secure />
-      <View style={styles.inline}><Toggle on={false} /><Text style={styles.small}>No password</Text></View>
-      <Button label="Start pairing" onPress={() => navigation.navigate("PairingProgress")} />
-    </Screen>
+    <DarkScreen gradient={G_WARM}>
+      <DarkHeader title="Connect Wi-Fi" subtitle="Use a 2.4 GHz network" navigation={navigation} />
+      <GlassField label="Network name" value={network} onChangeText={setNetwork} placeholder="Network name" />
+      <GlassField label="Password" value={wifiPassword} onChangeText={setWifiPassword} placeholder="Password" secure />
+      <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
+        <Toggle
+          on={noPassword}
+          activeColor={pal.mauve}
+          onPress={() => setNoPassword((v) => !v)}
+        />
+        <Text style={{ color: pal.w55, fontSize: 12 }}>No password</Text>
+      </View>
+      <MauveOmbreButton label="Start pairing" onPress={() => navigation.navigate("PairingProgress")} />
+    </DarkScreen>
   );
 }
 
 function PairingProgress({ navigation }) {
+  const [progress, setProgress] = useState(0);
+  const [complete, setComplete] = useState(false);
+
+  useEffect(() => {
+    const duration = 4000;
+    const interval = 40;
+    const steps = duration / interval;
+    let step = 0;
+    const timer = setInterval(() => {
+      step += 1;
+      const value = Math.min(step / steps, 1);
+      setProgress(value);
+      if (value >= 1) {
+        setComplete(true);
+        clearInterval(timer);
+      }
+    }, interval);
+    return () => clearInterval(timer);
+  }, []);
+
   return (
-    <Screen>
-      <Header title="Pairing purifier" subtitle="This may take up to one minute" navigation={navigation} />
-      <Card style={styles.hero}>
-        <Product size={155} />
-        <Progress value={0.68} />
-        <Text style={styles.metricValue}>68%</Text>
-        <Text style={styles.subtitle}>Sending Wi-Fi credentials</Text>
-      </Card>
-      <Button label="Continue" onPress={() => navigation.navigate("PairingSuccess")} />
-    </Screen>
+    <DarkScreen gradient={G_WARM}>
+      <DarkHeader title="Pairing…" subtitle="This may take up to one minute" navigation={navigation} />
+      <View style={{ alignItems: "center", paddingVertical: 24 }}>
+        <CircleRing value={progress} size={200} label="Connecting" terracottaOmbre />
+      </View>
+      <Text style={{ color: pal.w55, fontSize: 13, textAlign: "center" }}>Sending Wi-Fi credentials</Text>
+      <View style={{ flexGrow: 1, minHeight: 16 }} />
+      {complete ? (
+        <MauveOmbreButton label="Continue" onPress={() => navigation.navigate("PairingSuccess")} />
+      ) : null}
+    </DarkScreen>
   );
 }
 
 function PairingSuccess({ navigation }) {
   return (
-    <Screen>
-      <View style={styles.successMark}><Ionicons name="checkmark" size={46} color="#fff" /></View>
-      <Text style={styles.title}>Purifier connected</Text>
-      <Text style={styles.subtitle}>Air quality monitoring is active.</Text>
-      <Button label="Go to dashboard" onPress={() => navigation.navigate("Dashboard")} />
-    </Screen>
+    <DarkScreen gradient={G_WARM} padded={false} scroll={false}>
+      <View style={{ flex: 1, paddingHorizontal: 28, paddingBottom: 44, justifyContent: "space-between" }}>
+        <View style={{ flex: 1, justifyContent: "center", alignItems: "center", gap: 12 }}>
+          <SuccessMark ombre="tealMauve" />
+          <Text style={{ fontSize: 24, fontWeight: "800", color: pal.white, textAlign: "center" }}>Purifier connected</Text>
+          <Text style={{ fontSize: 13, color: pal.w55, textAlign: "center", lineHeight: 20 }}>Air quality monitoring is active.</Text>
+        </View>
+        <MauveOmbreButton label="Go to Dashboard" onPress={() => navigation.navigate("Dashboard")} />
+      </View>
+    </DarkScreen>
   );
 }
 
 function PairingError({ navigation }) {
   return (
-    <Screen>
-      <View style={[styles.successMark, { backgroundColor: colors.danger }]}><Text style={styles.bang}>!</Text></View>
-      <Text style={styles.title}>Pairing failed</Text>
-      <Text style={styles.subtitle}>Check Wi-Fi password and router frequency.</Text>
-      <Button label="Try again" onPress={() => navigation.navigate("WifiCredentials")} />
-    </Screen>
+    <DarkScreen gradient={G_NEUTRAL}>
+      <SuccessMark icon="close" color="#C84545" />
+      <Text style={{ fontSize: 24, fontWeight: "800", color: pal.white, textAlign: "center" }}>Pairing failed</Text>
+      <Text style={{ fontSize: 13, color: pal.w55, textAlign: "center" }}>Check Wi-Fi password and router frequency.</Text>
+      <View style={{ flexGrow: 1, minHeight: 20 }} />
+      <GlassButton label="Try again" onPress={() => navigation.navigate("WifiCredentials")} filled />
+    </DarkScreen>
   );
 }
 
-function Dashboard({ navigation }) {
+// ─── Aroma Timer (shared) ─────────────────────────────────────────────────────
+function formatDuration(totalSec) {
+  const m = Math.floor(totalSec / 60);
+  const s = totalSec % 60;
+  return `${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
+}
+
+const AromaTimerContext = createContext(null);
+
+function AromaTimerProvider({ children }) {
+  const [secondsRemaining, setSecondsRemaining] = useState(null);
+  const [isRunning, setIsRunning] = useState(false);
+  const [isPaused, setIsPaused] = useState(false);
+
+  useEffect(() => {
+    if (!isRunning || isPaused || secondsRemaining === null || secondsRemaining <= 0) return;
+    const timer = setInterval(() => {
+      setSecondsRemaining((current) => {
+        if (current === null || current <= 1) {
+          setIsRunning(false);
+          setIsPaused(false);
+          return 0;
+        }
+        return current - 1;
+      });
+    }, 1000);
+    return () => clearInterval(timer);
+  }, [isRunning, isPaused, secondsRemaining]);
+
+  const startTimer = (totalSeconds) => {
+    setSecondsRemaining(totalSeconds);
+    setIsRunning(true);
+    setIsPaused(false);
+  };
+
+  const pauseTimer = () => {
+    setIsRunning(false);
+    setIsPaused(true);
+  };
+
+  const resumeTimer = () => {
+    if (secondsRemaining > 0) {
+      setIsRunning(true);
+      setIsPaused(false);
+    }
+  };
+
   return (
-    <Screen>
-      <Header title="Living Room" subtitle="VESTEL VHT-402 WiFi" navigation={navigation} />
-      <Card style={styles.aqiCard}>
-        <View style={styles.aqiTop}>
-          <View><Text style={styles.sectionTitle}>Air Quality Index</Text><Text style={styles.title}>Good</Text></View>
-          <Text style={styles.aqiValue}>42</Text>
+    <AromaTimerContext.Provider value={{ secondsRemaining, isRunning, isPaused, startTimer, pauseTimer, resumeTimer }}>
+      {children}
+    </AromaTimerContext.Provider>
+  );
+}
+
+function useAromaTimer() {
+  return useContext(AromaTimerContext);
+}
+
+// ─── Main App Screens ─────────────────────────────────────────────────────────
+function Dashboard({ navigation }) {
+  const { secondsRemaining } = useAromaTimer();
+  const showAromaTimer = secondsRemaining !== null && secondsRemaining > 0;
+
+  return (
+    <LinearGradient colors={G_MAUVE} style={{ flex: 1 }} start={{ x: 0.2, y: 0 }} end={{ x: 0.8, y: 1 }}>
+      <SafeAreaView style={{ flex: 1 }}>
+        <StatusBar barStyle="light-content" />
+        <View style={{ flex: 1 }}>
+          <View pointerEvents="none" style={StyleSheet.absoluteFillObject}>
+            <View style={{ flex: 1, alignItems: "center", justifyContent: "center" }}>
+              <AuraOrb size={width * 0.92} variant="warm" vivid />
+            </View>
+          </View>
+
+          <View style={s.dashContainer}>
+            <View style={s.dashTop}>
+              <Text style={s.welcomeHome}>Home</Text>
+              {showAromaTimer && (
+                <Text style={s.aromaTimer}>{formatDuration(secondsRemaining)}</Text>
+              )}
+              <Text style={s.dashRoom}>Living Room</Text>
+            </View>
+
+            <TouchableOpacity
+              style={s.fanWrapper}
+              activeOpacity={0.85}
+              onPress={() => navigation.navigate("FanControl")}
+            >
+              <FanSpiral size={width * 0.70} />
+              <BounceHint text="tap to change fan speed" />
+            </TouchableOpacity>
+
+            <View style={s.dashBottom}>
+              <Text style={s.airClean}>Air is clean</Text>
+              <Text style={s.dashMetrics}>PM2.5  12  |  TVOC  85</Text>
+              <View style={s.dashNavRow}>
+                {[
+                  ["Air Quality", "Analytics"],
+                  ["Filter", "FilterMaintenance"],
+                  ["Aroma", "Aroma"],
+                  ["Settings", "Settings"],
+                ].map(([label, route]) => (
+                  <TouchableOpacity key={route} style={s.dashPill} onPress={() => navigation.navigate(route)}>
+                    <Text style={s.dashPillText}>{label}</Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+            </View>
+          </View>
         </View>
-        <View style={styles.pmLive}><Text style={styles.rowTitle}>PM2.5 live</Text><Text style={styles.greenPill}>8 µg/m³</Text></View>
-      </Card>
-      <View style={styles.grid}>
-        <MetricCard icon="weather-night" value="Sleep" label="Active Mode" />
-        <MetricCard icon="fan" value="40%" label="Fan Speed" />
-        <MetricCard icon="flower" value="62%" label="Aroma Left" />
-        <MetricCard icon="timer-outline" value="2:30" label="Timer Left" />
-      </View>
-      <Button label="Sleep Mode" onPress={() => navigation.navigate("SleepMode")} />
-      <View style={styles.rowActions}>
-        <Button label="Analytics" variant="secondary" onPress={() => navigation.navigate("Analytics")} />
-        <Button label="Settings" variant="secondary" onPress={() => navigation.navigate("Settings")} />
-      </View>
-    </Screen>
+      </SafeAreaView>
+    </LinearGradient>
+  );
+}
+
+function FanControl({ navigation }) {
+  const [fanDegree, setFanDegree] = useState(2);
+
+  return (
+    <LinearGradient colors={G_MAUVE} style={{ flex: 1 }} start={{ x: 0.2, y: 0 }} end={{ x: 0.8, y: 1 }}>
+      <SafeAreaView style={{ flex: 1 }}>
+        <StatusBar barStyle="light-content" />
+        <View style={{ flex: 1, paddingHorizontal: 22, paddingTop: 20, paddingBottom: 40 }}>
+          <DarkHeader title="Fan Control" subtitle="Tap to adjust fan speed" navigation={navigation} />
+          <View style={{ flex: 1, alignItems: "center", justifyContent: "center" }}>
+            <FanSpiral size={width * 0.82} />
+          </View>
+          <View style={{ alignItems: "center", gap: 16 }}>
+            <Text style={{ color: pal.w55, fontSize: 11, letterSpacing: 2.5 }}>FAN DEGREE</Text>
+            <View style={{ flexDirection: "row", gap: 10 }}>
+              {[1, 2, 3, 4, 5].map((deg) => {
+                const selected = fanDegree === deg;
+                return (
+                  <TouchableOpacity
+                    key={deg}
+                    activeOpacity={0.85}
+                    onPress={() => setFanDegree(deg)}
+                    style={[
+                      { width: 48, height: 48, borderRadius: 24, alignItems: "center", justifyContent: "center", borderWidth: 1 },
+                      selected
+                        ? { backgroundColor: pal.teal, borderColor: pal.teal }
+                        : { backgroundColor: pal.glass, borderColor: pal.glassBorder },
+                    ]}
+                  >
+                    <Text style={{ color: pal.white, fontWeight: "700", fontSize: 16 }}>{deg}</Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+            <Text style={{ color: pal.w30, fontSize: 12, letterSpacing: 1 }}>slide to arrange</Text>
+          </View>
+        </View>
+      </SafeAreaView>
+    </LinearGradient>
   );
 }
 
 function SleepMode({ navigation }) {
   return (
-    <Screen>
-      <Header title="Sleep Mode" subtitle="Silent bedroom routine" navigation={navigation} />
-      <Card><Text style={styles.sectionTitle}>Noise level</Text><Text style={styles.aqiValue}>22 dB</Text><Progress value={0.3} /></Card>
-      <Row icon="calendar-night" title="Every night" value="22:30 - 07:00" />
-      <Row icon="brightness-6" title="LED brightness" value="Off" />
-      <Row icon="auto-fix" title="Auto activation" value="On" />
-    </Screen>
+    <DarkScreen gradient={G_TEAL}>
+      <DarkHeader title="Sleep Mode" subtitle="Silent bedroom routine" navigation={navigation} />
+      <GlassCard style={{ alignItems: "center", gap: 8 }}>
+        <Text style={{ color: pal.w55, fontSize: 11, letterSpacing: 2, textTransform: "uppercase" }}>Noise Level</Text>
+        <Text style={{ color: pal.white, fontSize: 44, fontWeight: "300" }}>
+          22 <Text style={{ fontSize: 20, color: pal.w55 }}>dB</Text>
+        </Text>
+        <ProgressBar value={0.3} />
+      </GlassCard>
+      <DarkRow icon="calendar-night" title="Every night" value="22:30 – 07:00" />
+      <DarkRow icon="brightness-6" title="LED brightness" value="Off" />
+      <DarkRow icon="auto-fix" title="Auto activation" value="On" />
+    </DarkScreen>
   );
 }
 
 function FilterMaintenance({ navigation }) {
   return (
-    <Screen>
-      <Header title="Filter Maintenance" subtitle="Transparent upkeep" navigation={navigation} />
-      <Card style={styles.hero}><Text style={styles.aqiValue}>72%</Text><Text style={styles.subtitle}>HEPA H13 filter life remaining</Text><Progress value={0.72} color={colors.green} /></Card>
-      <Row icon="air-filter" title="HEPA H13 Filter" value="72%" />
-      <Row icon="air-filter" title="Carbon Pre-filter" value="41%" />
-      <Row icon="lamp" title="UV-C Lamp" value="16%" danger />
-      <Button label="Replace filter" onPress={() => navigation.navigate("ReplaceFilter")} />
-    </Screen>
+    <DarkScreen gradient={G_QUALITY}>
+      <DarkHeader title="Filter Life" subtitle="HEPA H13 status" navigation={navigation} />
+      <View style={{ alignItems: "center", paddingVertical: 16 }}>
+        <CircleRing value={0.78} size={210} label="HEPA filter" color={pal.teal} />
+      </View>
+      <DarkRow icon="air-filter" title="HEPA H13 Filter" value="78%" />
+      <DarkRow icon="air-filter" title="Carbon Pre-filter" value="41%" />
+      <DarkRow icon="lamp" title="UV-C Lamp" value="16%" danger />
+      <GlassButton label="Replace filter" onPress={() => navigation.navigate("ReplaceFilter")} filled />
+    </DarkScreen>
   );
 }
 
 function ReplaceFilter({ navigation }) {
   return (
-    <Screen>
-      <Header title="Replace Filter" subtitle="Guided workflow" navigation={navigation} />
-      {["Turn purifier off", "Remove old filter", "Install new filter"].map((x, i) => <Row key={x} icon="numeric-1-circle" title={`${i + 1}. ${x}`} value="" />)}
-      <Button label="I replaced the filter" onPress={() => navigation.navigate("FilterMaintenance")} />
-    </Screen>
+    <DarkScreen gradient={G_TEAL}>
+      <DarkHeader title="Replace Filter" subtitle="Guided workflow" navigation={navigation} />
+      {["Turn purifier off", "Remove old filter", "Install new filter"].map((x, i) => (
+        <DarkRow key={x} icon={`numeric-${i + 1}-circle`} title={`${i + 1}. ${x}`} value="" />
+      ))}
+      <GlassButton label="Filter replaced" onPress={() => navigation.navigate("FilterMaintenance")} filled />
+    </DarkScreen>
   );
 }
 
 function Analytics({ navigation }) {
   return (
-    <Screen>
-      <Header title="Air Quality Stats" subtitle="Daily verification" navigation={navigation} />
-      <View style={styles.segment}><Text style={styles.segmentActive}>Day</Text><Text style={styles.segmentItem}>Week</Text><Text style={styles.segmentItem}>Month</Text></View>
-      <Chart />
-      <View style={styles.grid3}>
-        <MetricCard icon="leaf" value="5" label="Best" />
-        <MetricCard icon="chart-line" value="12" label="Avg" />
-        <MetricCard icon="alert" value="48" label="Peak" />
+    <DarkScreen gradient={G_QUALITY}>
+      <DarkHeader title="Air Quality" subtitle="Weekly overview" navigation={navigation} />
+      <View style={{ flexDirection: "row", height: 38, borderRadius: 14, backgroundColor: pal.glass, borderWidth: 1, borderColor: pal.glassBorder, padding: 4 }}>
+        {["Day", "Week", "Month"].map((t, i) => (
+          <View key={t} style={[{ flex: 1, alignItems: "center", justifyContent: "center", borderRadius: 10 }, i === 1 && { backgroundColor: pal.teal }]}>
+            <Text style={[{ fontSize: 13, fontWeight: "700" }, i === 1 ? { color: pal.white } : { color: pal.w55 }]}>{t}</Text>
+          </View>
+        ))}
       </View>
-      <Chart type="bars" />
-    </Screen>
+      <WeekChart />
+      <View style={{ flexDirection: "row", gap: 10 }}>
+        {[["leaf", "5", "Best"], ["chart-line", "12", "Avg"], ["alert", "48", "Peak"]].map(([icon, value, label]) => (
+          <View key={label} style={{ flex: 1, minHeight: 88, borderRadius: 18, borderWidth: 1, borderColor: pal.glassBorder, backgroundColor: pal.glass, alignItems: "center", justifyContent: "center", gap: 4, padding: 10 }}>
+            <MaterialCommunityIcons name={icon} size={20} color={pal.teal} />
+            <Text style={{ fontSize: 20, fontWeight: "800", color: pal.white }}>{value}</Text>
+            <Text style={{ color: pal.w55, fontSize: 11 }}>{label}</Text>
+          </View>
+        ))}
+      </View>
+    </DarkScreen>
   );
 }
 
 function Automation({ navigation }) {
   return (
-    <Screen>
-      <Header title="Automation" subtitle="Scenario presets" navigation={navigation} />
-      <Row icon="flower-pollen" title="Allergy preset" value="On" />
-      <Row icon="paw" title="Pet preset" value="Off" />
-      <Row icon="weather-night" title="Night preset" value="On" />
-      <Button label="Create rule" onPress={() => navigation.navigate("CustomAutomation")} />
-    </Screen>
+    <DarkScreen gradient={G_TEAL}>
+      <DarkHeader title="Automation" subtitle="Scenario presets" navigation={navigation} />
+      <DarkRow icon="flower-pollen" title="Allergy preset" value="On" />
+      <DarkRow icon="paw" title="Pet preset" value="Off" />
+      <DarkRow icon="weather-night" title="Night preset" value="On" />
+      <GlassButton label="Create rule" onPress={() => navigation.navigate("CustomAutomation")} filled />
+    </DarkScreen>
   );
 }
 
 function CustomAutomation({ navigation }) {
+  const [ruleName, setRuleName] = useState("");
+
   return (
-    <Screen>
-      <Header title="Custom Rule" subtitle="Trigger-based action" navigation={navigation} />
-      <Field label="Rule name" value="Evening allergy care" />
-      <Row icon="target" title="Trigger" value="PM2.5 above 35" />
-      <Row icon="clock-outline" title="Condition" value="18:00 - 23:00" />
-      <Row icon="auto-fix" title="Action" value="Allergy Mode" />
-      <Button label="Save automation" onPress={() => navigation.navigate("Automation")} />
-    </Screen>
+    <DarkScreen gradient={G_TEAL}>
+      <DarkHeader title="Custom Rule" subtitle="Trigger-based action" navigation={navigation} />
+      <GlassField label="Rule name" value={ruleName} onChangeText={setRuleName} placeholder="Rule name" />
+      <DarkRow icon="target" title="Trigger" value="PM2.5 above 35" />
+      <DarkRow icon="clock-outline" title="Condition" value="18:00 – 23:00" />
+      <DarkRow icon="auto-fix" title="Action" value="Allergy Mode" />
+      <GlassButton label="Save automation" onPress={() => navigation.navigate("Automation")} filled />
+    </DarkScreen>
   );
 }
 
+// ─── Settings & Aroma ─────────────────────────────────────────────────────────
 function Settings({ navigation }) {
   return (
-    <Screen>
-      <Header title="Settings" subtitle="App and device preferences" navigation={navigation} />
-      <Row icon="translate" title="Language" value="English" />
-      <Row icon="bell-outline" title="Notifications" value="On" onPress={() => navigation.navigate("Notifications")} />
-      <Row icon="devices" title="Device management" value="2 devices" onPress={() => navigation.navigate("DeviceManagement")} />
-      <Row icon="account-outline" title="Account settings" value="Mesud" onPress={() => navigation.navigate("UserProfile")} />
-      <Row icon="download" title="Firmware update" value="v1.8.2" onPress={() => navigation.navigate("FirmwareAvailable")} />
-    </Screen>
+    <DarkScreen gradient={G_QUALITY}>
+      <View style={{ paddingTop: 8, paddingBottom: 6 }}>
+        <Text style={{ color: pal.white, fontSize: 28, fontWeight: "700" }}>Settings</Text>
+        <Text style={{ color: pal.w55, fontSize: 13, marginTop: 4 }}>App and device preferences</Text>
+      </View>
+      <DarkRow icon="brightness-6" title="Display" onPress={() => {}} />
+      <DarkRow icon="bell-outline" title="Notifications" onPress={() => navigation.navigate("Notifications")} />
+      <DarkRow icon="information-outline" title="Device Info" onPress={() => navigation.navigate("DeviceManagement")} />
+      <View style={{ height: 8 }} />
+      <DarkRow icon="account-outline" title="Account" value="Mesud" onPress={() => navigation.navigate("UserProfile")} />
+      <DarkRow icon="download" title="Firmware" value="v1.8.2" onPress={() => navigation.navigate("FirmwareAvailable")} />
+    </DarkScreen>
   );
 }
 
+function Aroma({ navigation }) {
+  const aromas = [
+    { name: "Mint", icon: "leaf", accent: "#4A9C7A" },
+    { name: "Lavender", icon: "flower", accent: "#9470B8" },
+    { name: "Eucalyptus", icon: "tree", accent: "#5A9868" },
+  ];
+  const intensityOptions = [
+    { label: "Less", iconSize: 14, val: 0.3 },
+    { label: "Medium", iconSize: 20, val: 0.6 },
+    { label: "Most", iconSize: 26, val: 1.0 },
+  ];
+  const [selectedAroma, setSelectedAroma] = useState("Lavender");
+  const [intensity, setIntensity] = useState(0.6);
+  const [durationInput, setDurationInput] = useState("03:00");
+  const { secondsRemaining, isRunning, isPaused, startTimer, pauseTimer, resumeTimer } = useAromaTimer();
+
+  const parseDurationInput = (text) => {
+    const parts = (text || "00:00").split(":");
+    let minutes = parseInt(parts[0], 10) || 0;
+    let seconds = parseInt(parts[1], 10) || 0;
+    minutes = Math.min(60, Math.max(0, minutes));
+    if (minutes === 60) seconds = 0;
+    else seconds = Math.min(59, Math.max(0, seconds));
+    return minutes * 60 + seconds;
+  };
+
+  const handleCounterInput = (text) => {
+    const digits = text.replace(/[^0-9]/g, "").slice(0, 4);
+    if (!digits) {
+      setDurationInput("");
+      return;
+    }
+    let minutes;
+    let seconds;
+    if (digits.length <= 2) {
+      minutes = Math.min(60, parseInt(digits, 10) || 0);
+      seconds = 0;
+    } else {
+      const minsPart = digits.slice(0, digits.length - 2);
+      const secsPart = digits.slice(-2);
+      minutes = Math.min(60, parseInt(minsPart, 10) || 0);
+      seconds = minutes === 60 ? 0 : Math.min(59, parseInt(secsPart, 10) || 0);
+    }
+    setDurationInput(formatDuration(minutes * 60 + seconds));
+  };
+
+  const normalizeDurationInput = () => {
+    const total = parseDurationInput(durationInput);
+    setDurationInput(formatDuration(total > 0 ? total : 60));
+  };
+
+  const handleTimerPress = () => {
+    if (secondsRemaining === null) {
+      const total = Math.max(60, parseDurationInput(durationInput));
+      setDurationInput(formatDuration(total));
+      startTimer(total);
+      return;
+    }
+    if (isRunning) {
+      pauseTimer();
+      return;
+    }
+    if (secondsRemaining > 0) {
+      resumeTimer();
+    }
+  };
+
+  return (
+    <LinearGradient colors={G_TERRACOTTA} locations={[0, 0.5, 1]} style={{ flex: 1 }} start={{ x: 0.05, y: 0 }} end={{ x: 0.95, y: 1 }}>
+      <SafeAreaView style={{ flex: 1 }}>
+        <StatusBar barStyle="light-content" />
+        <ScrollView contentContainerStyle={{ paddingHorizontal: 22, paddingTop: 20, paddingBottom: 40, gap: 16 }} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
+          <DarkHeader title="Aroma" subtitle="Choose your scent" navigation={navigation} />
+
+          <View style={{ flexDirection: "row", gap: 10 }}>
+            {aromas.map((a) => {
+              const selected = a.name === selectedAroma;
+              return (
+                <TouchableOpacity
+                  key={a.name}
+                  activeOpacity={0.85}
+                  onPress={() => setSelectedAroma(a.name)}
+                  style={[
+                    { flex: 1, alignItems: "center", paddingVertical: 20, borderRadius: 18, borderWidth: 1, gap: 8 },
+                    selected
+                      ? { backgroundColor: `${a.accent}30`, borderColor: a.accent }
+                      : { backgroundColor: pal.glass, borderColor: pal.glassBorder },
+                  ]}
+                >
+                  <MaterialCommunityIcons name={a.icon} size={32} color={selected ? a.accent : pal.w55} />
+                  <Text style={{ color: selected ? pal.white : pal.w70, fontWeight: "600", fontSize: 13 }}>{a.name}</Text>
+                </TouchableOpacity>
+              );
+            })}
+          </View>
+
+          <GlassCard>
+            <Text style={{ color: pal.w55, fontSize: 11, letterSpacing: 2, textTransform: "uppercase" }}>Intensity</Text>
+            {intensityOptions.map(({ label, iconSize, val }) => {
+              const selected = intensity === val;
+              return (
+                <TouchableOpacity
+                  key={label}
+                  activeOpacity={0.85}
+                  onPress={() => setIntensity(val)}
+                  style={{ flexDirection: "row", alignItems: "center", gap: 14 }}
+                >
+                  <View style={[{ width: 36, height: 36, borderRadius: 18, alignItems: "center", justifyContent: "center" }, selected && { backgroundColor: "rgba(221,215,193,0.20)" }]}>
+                    <MaterialCommunityIcons name="flower" size={iconSize} color={selected ? pal.white : pal.w55} />
+                  </View>
+                  <Text style={{ fontSize: 14, fontWeight: "600", color: selected ? pal.white : pal.w55 }}>{label}</Text>
+                </TouchableOpacity>
+              );
+            })}
+          </GlassCard>
+
+          <GlassCard style={{ alignItems: "center", gap: 12 }}>
+            <Text style={{ color: pal.w55, fontSize: 11, letterSpacing: 2, textTransform: "uppercase" }}>Duration</Text>
+            <Text style={{ color: pal.w30, fontSize: 11 }}>max 60 minutes</Text>
+            {secondsRemaining === null ? (
+              <TextInput
+                value={durationInput}
+                onChangeText={handleCounterInput}
+                onBlur={normalizeDurationInput}
+                keyboardType="number-pad"
+                selectTextOnFocus
+                style={{
+                  color: pal.white,
+                  fontSize: 52,
+                  fontWeight: "200",
+                  letterSpacing: 3,
+                  textAlign: "center",
+                  minWidth: 220,
+                  padding: 0,
+                }}
+              />
+            ) : (
+              <Text style={{ color: pal.white, fontSize: 52, fontWeight: "200", letterSpacing: 3 }}>{formatDuration(secondsRemaining)}</Text>
+            )}
+            <TouchableOpacity
+              activeOpacity={0.85}
+              onPress={handleTimerPress}
+              style={{ width: 52, height: 52, borderRadius: 26, backgroundColor: pal.glass, borderWidth: 1, borderColor: pal.glassBorder, alignItems: "center", justifyContent: "center" }}
+            >
+              <Ionicons
+                name={secondsRemaining === null || isPaused ? "play" : "pause"}
+                size={22}
+                color={pal.white}
+              />
+            </TouchableOpacity>
+            <Text style={{ color: pal.w30, fontSize: 11 }}>
+              {secondsRemaining === null ? "Tap to start countdown" : isPaused ? "Paused" : isRunning ? "Counting down…" : "Finished"}
+            </Text>
+          </GlassCard>
+
+          <GlassButton label="Done" onPress={() => navigation.goBack()} filled color={pal.burgundy} />
+        </ScrollView>
+      </SafeAreaView>
+    </LinearGradient>
+  );
+}
+
+// ─── Device & Account Screens ─────────────────────────────────────────────────
 function DeviceManagement({ navigation }) {
   return (
-    <Screen>
-      <Header title="Device Management" subtitle="Rooms and paired purifiers" navigation={navigation} />
-      <Row icon="air-purifier" title="Living Room" value="Good" />
-      <Row icon="air-purifier" title="Bedroom" value="Silent" />
-      <Button label="Add new purifier" onPress={() => navigation.navigate("AddDevice")} />
-    </Screen>
+    <DarkScreen gradient={G_TERRACOTTA}>
+      <DarkHeader title="Devices" subtitle="Rooms and paired purifiers" navigation={navigation} />
+      <DarkRow icon="air-purifier" title="Living Room" value="Good" />
+      <DarkRow icon="air-purifier" title="Bedroom" value="Silent" />
+      <GlassButton label="Add new purifier" onPress={() => navigation.navigate("AddDevice")} filled />
+    </DarkScreen>
   );
 }
 
 function Notifications({ navigation }) {
   return (
-    <Screen>
-      <Header title="Notifications" subtitle="Alerts and reminders" navigation={navigation} />
+    <DarkScreen gradient={G_TERRACOTTA}>
+      <DarkHeader title="Notifications" subtitle="Alerts and reminders" navigation={navigation} />
       {["Filter replacement reminder", "Poor air quality alert", "Device offline alert", "Firmware update available"].map((x) => (
-        <View key={x} style={styles.notification}><Text style={styles.rowTitle}>{x}</Text><Toggle /></View>
+        <View key={x} style={{ minHeight: 62, borderRadius: 16, borderWidth: 1, borderColor: pal.glassBorder, backgroundColor: pal.glass, paddingHorizontal: 14, paddingVertical: 14, flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
+          <Text style={{ flex: 1, fontSize: 14, color: pal.w88, fontWeight: "600", paddingRight: 12, lineHeight: 20 }}>{x}</Text>
+          <Toggle />
+        </View>
       ))}
-    </Screen>
+    </DarkScreen>
   );
 }
 
 function FirmwareAvailable({ navigation }) {
   return (
-    <Screen>
-      <Header title="Firmware Update" subtitle="VESTEL VHT-402 WiFi" navigation={navigation} />
-      <Card style={styles.hero}><Product size={120} /><Text style={styles.title}>Version 1.8.2</Text><Text style={styles.subtitle}>Improves Wi-Fi stability and sensor calibration.</Text></Card>
-      <Button label="Update now" onPress={() => navigation.navigate("FirmwareUpdating")} />
-      <Button label="Later" variant="secondary" onPress={() => navigation.goBack()} />
-    </Screen>
+    <DarkScreen gradient={G_TERRACOTTA} padded={false} scroll={false}>
+      <View style={{ flex: 1, paddingHorizontal: 28, paddingTop: 28, paddingBottom: 44, justifyContent: "space-between" }}>
+        <DarkHeader title="Firmware Update" subtitle="VESTEL VHT-402 WiFi" navigation={navigation} />
+        <View style={{ alignItems: "center", gap: 14 }}>
+          <FanSpiral size={width * 0.46} />
+          <Text style={{ color: pal.white, fontSize: 26, fontWeight: "700" }}>Version 1.8.2</Text>
+          <Text style={{ color: pal.w55, fontSize: 13, textAlign: "center", lineHeight: 20 }}>
+            Improves Wi-Fi stability and sensor calibration.
+          </Text>
+        </View>
+        <View style={{ gap: 12 }}>
+          <GlassButton label="Update now" onPress={() => navigation.navigate("FirmwareUpdating")} filled />
+          <GlassButton label="Later" onPress={() => navigation.goBack()} />
+        </View>
+      </View>
+    </DarkScreen>
   );
 }
 
 function FirmwareUpdating({ navigation }) {
   return (
-    <Screen>
-      <Header title="Updating Firmware" subtitle="Do not unplug the purifier" navigation={navigation} />
-      <Card style={styles.hero}><Product size={150} /><Progress value={0.64} /><Text style={styles.metricValue}>64%</Text><Text style={styles.subtitle}>Installing version 1.8.2</Text></Card>
-      <Button label="Finish demo" onPress={() => navigation.navigate("FirmwareComplete")} />
-    </Screen>
+    <DarkScreen gradient={G_TERRACOTTA}>
+      <DarkHeader title="Updating Firmware" subtitle="Do not unplug the purifier" navigation={navigation} />
+      <View style={{ alignItems: "center", paddingVertical: 24 }}>
+        <CircleRing value={0.64} size={200} label="Installing v1.8.2" />
+      </View>
+      <View style={{ flexGrow: 1, minHeight: 16 }} />
+      <GlassButton label="Finish demo" onPress={() => navigation.navigate("FirmwareComplete")} filled />
+    </DarkScreen>
   );
 }
 
 function FirmwareComplete({ navigation }) {
   return (
-    <Screen>
-      <View style={styles.successMark}><Ionicons name="checkmark" size={46} color="#fff" /></View>
-      <Text style={styles.title}>Update complete</Text>
-      <Text style={styles.subtitle}>Your purifier is running the latest firmware.</Text>
-      <Button label="Back to settings" onPress={() => navigation.navigate("Settings")} />
-    </Screen>
+    <DarkScreen gradient={G_TERRACOTTA}>
+      <SuccessMark />
+      <Text style={{ fontSize: 24, fontWeight: "800", color: pal.white, textAlign: "center" }}>Update complete</Text>
+      <Text style={{ fontSize: 13, color: pal.w55, textAlign: "center" }}>
+        Your purifier is running the latest firmware.
+      </Text>
+      <View style={{ flexGrow: 1, minHeight: 20 }} />
+      <GlassButton label="Back to settings" onPress={() => navigation.navigate("Settings")} filled />
+    </DarkScreen>
   );
 }
 
 function UserProfile({ navigation }) {
+  const { language } = useLanguage();
+
   return (
-    <Screen>
-      <Header title="User Profile" subtitle="Account management" navigation={navigation} />
-      <Card style={styles.profile}><View style={styles.avatar}><Text style={styles.avatarText}>M</Text></View><View><Text style={styles.titleSmall}>Mesud Guluyev</Text><Text style={styles.subtitle}>mesud@example.com</Text></View></Card>
-      <Row icon="account" title="Name" value="Mesud Guluyev" />
-      <Row icon="email" title="Email" value="mesud@example.com" />
-      <Row icon="translate" title="Language" value="English" />
-      <View style={styles.spacer} />
-      <Button label="Logout" variant="secondary" onPress={() => navigation.navigate("SignIn")} />
-    </Screen>
+    <DarkScreen gradient={G_TERRACOTTA}>
+      <DarkHeader title="Profile" subtitle="Account management" navigation={navigation} />
+      <View style={{ alignItems: "center", paddingVertical: 20, gap: 10 }}>
+        <View style={{ width: 72, height: 72, borderRadius: 36, backgroundColor: pal.terracotta, alignItems: "center", justifyContent: "center", borderWidth: 2, borderColor: pal.glassBorder }}>
+          <Text style={{ color: pal.white, fontSize: 28, fontWeight: "900" }}>M</Text>
+        </View>
+        <Text style={{ color: pal.white, fontSize: 20, fontWeight: "700" }}>Mesud Guluyev</Text>
+        <Text style={{ color: pal.w55, fontSize: 13 }}>mesud@example.com</Text>
+      </View>
+      <DarkRow icon="account" title="Name" value="Mesud Guluyev" />
+      <DarkRow icon="email" title="Email" value="mesud@example.com" />
+      <DarkRow
+        icon="translate"
+        title="Language"
+        value={language}
+        onPress={() => navigation.navigate("Language", { fromSettings: true })}
+      />
+      <View style={{ flexGrow: 1, minHeight: 18 }} />
+      <GlassButton label="Logout" onPress={() => navigation.navigate("SignIn")} />
+    </DarkScreen>
   );
 }
+
+// ─── Navigation ───────────────────────────────────────────────────────────────
+const screens = {
+  Welcome, Language, AuthChoice, SignIn, CreateAccount, VerifyEmail,
+  CreatePassword, AccountCreated, ForgotPassword, ResetEmailSent,
+  PasswordResetSuccess, AddDevice, DeviceFound, WifiCredentials,
+  PairingProgress, PairingSuccess, PairingError, Dashboard, FanControl,
+  SleepMode, FilterMaintenance, ReplaceFilter, Analytics, Automation,
+  CustomAutomation, Settings, Aroma, DeviceManagement, Notifications,
+  FirmwareAvailable, FirmwareUpdating, FirmwareComplete, UserProfile,
+};
 
 function AppNavigator() {
   return (
@@ -675,113 +1730,28 @@ function AppNavigator() {
   );
 }
 
-const screens = {
-  Welcome,
-  Language,
-  AuthChoice,
-  SignIn,
-  CreateAccount,
-  VerifyEmail,
-  CreatePassword,
-  AccountCreated,
-  ForgotPassword,
-  ResetEmailSent,
-  PasswordResetSuccess,
-  AddDevice,
-  DeviceFound,
-  WifiCredentials,
-  PairingProgress,
-  PairingSuccess,
-  PairingError,
-  Dashboard,
-  SleepMode,
-  FilterMaintenance,
-  ReplaceFilter,
-  Analytics,
-  Automation,
-  CustomAutomation,
-  Settings,
-  DeviceManagement,
-  Notifications,
-  FirmwareAvailable,
-  FirmwareUpdating,
-  FirmwareComplete,
-  UserProfile
-};
-
 export default function App() {
-  return <AppNavigator />;
+  return (
+    <LanguageProvider>
+      <AromaTimerProvider>
+        <AppNavigator />
+      </AromaTimerProvider>
+    </LanguageProvider>
+  );
 }
 
-const styles = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: colors.bg },
-  screen: { minHeight: "100%", gap: 16, paddingBottom: 26 },
-  padded: { paddingHorizontal: 22, paddingTop: 20 },
-  header: { flexDirection: "row", alignItems: "center", gap: 12, marginBottom: 4 },
-  back: { width: 36, height: 36, borderRadius: 18, backgroundColor: colors.soft, alignItems: "center", justifyContent: "center", borderWidth: 1, borderColor: colors.border },
-  headerTitle: { fontSize: 18, fontWeight: "700", color: colors.text },
-  headerSub: { fontSize: 12, color: colors.sub, marginTop: 2 },
-  topBrand: { flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
-  brandMark: { width: 24, height: 24, borderRadius: 8, backgroundColor: colors.red, alignItems: "center", justifyContent: "center" },
-  brandMarkText: { color: "#fff", fontWeight: "800" },
-  lang: { color: colors.sub, fontSize: 12 },
-  hero: { alignItems: "center", justifyContent: "center", minHeight: 280 },
-  card: { backgroundColor: colors.card, borderRadius: 18, borderWidth: 1, borderColor: colors.border, padding: 16, gap: 12 },
-  productBox: { alignItems: "center", justifyContent: "center" },
-  welcome: { fontSize: 28, letterSpacing: 0, color: colors.text, fontWeight: "500" },
-  title: { fontSize: 24, fontWeight: "800", color: colors.text, textAlign: "center" },
-  titleSmall: { fontSize: 18, fontWeight: "800", color: colors.text },
-  brandTitle: { fontSize: 22, fontWeight: "500", color: colors.text, textAlign: "center", marginVertical: 20 },
-  subtitle: { fontSize: 13, color: colors.sub, textAlign: "center", lineHeight: 19 },
-  body: { fontSize: 14, color: colors.sub, lineHeight: 21 },
-  button: { height: 54, borderRadius: 14, backgroundColor: colors.red, alignItems: "center", justifyContent: "center" },
-  buttonSecondary: { backgroundColor: colors.card, borderWidth: 1, borderColor: colors.borderDark },
-  buttonText: { color: "#fff", fontWeight: "800", fontSize: 15 },
-  buttonSecondaryText: { color: colors.red },
-  fieldWrap: { gap: 6 },
-  label: { color: colors.sub, fontSize: 12, fontWeight: "600" },
-  field: { height: 46, borderRadius: 13, borderWidth: 1, borderColor: colors.borderDark, backgroundColor: colors.soft, paddingHorizontal: 12, justifyContent: "center" },
-  input: { color: colors.text, fontSize: 14, padding: 0 },
-  row: { minHeight: 58, borderRadius: 16, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.card, paddingHorizontal: 14, flexDirection: "row", alignItems: "center", gap: 12 },
-  selectedRow: { backgroundColor: colors.redSoft, borderColor: colors.red },
-  rowText: { flex: 1 },
-  rowTitle: { fontSize: 14, color: colors.text, fontWeight: "700", flex: 1 },
-  rowValue: { color: colors.sub, fontSize: 12, fontWeight: "600" },
-  inline: { flexDirection: "row", alignItems: "center", gap: 10 },
-  small: { color: colors.sub, fontSize: 12, flex: 1 },
-  link: { color: colors.red, fontWeight: "700", fontSize: 12 },
-  centerText: { textAlign: "center", color: colors.sub, fontSize: 12 },
-  or: { textAlign: "center", color: colors.sub, fontSize: 12 },
-  legal: { textAlign: "center", color: colors.sub, fontSize: 10, lineHeight: 16 },
-  spacer: { flexGrow: 1, minHeight: 18 },
-  otpRow: { flexDirection: "row", gap: 8, justifyContent: "space-between" },
-  otp: { width: (width - 44 - 40) / 6, height: 44, borderRadius: 12, borderWidth: 1, borderColor: colors.borderDark, backgroundColor: colors.soft, alignItems: "center", justifyContent: "center" },
-  successMark: { alignSelf: "center", width: 86, height: 86, borderRadius: 43, backgroundColor: colors.green, alignItems: "center", justifyContent: "center", marginTop: 20 },
-  bang: { color: "#fff", fontSize: 44, fontWeight: "900" },
-  progressTrack: { height: 8, borderRadius: 4, backgroundColor: "#ECECEC", overflow: "hidden", width: "100%" },
-  progressFill: { height: 8, borderRadius: 4 },
-  checkRow: { flexDirection: "row", gap: 10, alignItems: "center" },
-  aqiCard: { backgroundColor: colors.redSoft },
-  aqiTop: { flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
-  sectionTitle: { color: colors.sub, fontSize: 12, fontWeight: "800", textTransform: "uppercase" },
-  aqiValue: { fontSize: 44, fontWeight: "900", color: colors.text },
-  pmLive: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", borderRadius: 14, padding: 12, backgroundColor: "#fff", borderWidth: 1, borderColor: colors.border },
-  greenPill: { color: "#fff", backgroundColor: colors.green, paddingHorizontal: 10, paddingVertical: 5, borderRadius: 12, overflow: "hidden", fontSize: 12, fontWeight: "800" },
-  grid: { flexDirection: "row", flexWrap: "wrap", gap: 12 },
-  grid3: { flexDirection: "row", gap: 10 },
-  metricCard: { width: (width - 56) / 2, minHeight: 96, borderRadius: 16, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.card, alignItems: "center", justifyContent: "center", gap: 5, padding: 10 },
-  metricValue: { fontSize: 20, fontWeight: "900", color: colors.text, textAlign: "center" },
-  metricLabel: { color: colors.sub, fontSize: 11, textAlign: "center" },
-  rowActions: { flexDirection: "row", gap: 10 },
-  segment: { height: 42, borderRadius: 17, backgroundColor: colors.soft, flexDirection: "row", padding: 4 },
-  segmentActive: { flex: 1, backgroundColor: colors.red, color: "#fff", textAlign: "center", textAlignVertical: "center", borderRadius: 14, fontWeight: "800", paddingTop: 8 },
-  segmentItem: { flex: 1, color: colors.sub, textAlign: "center", paddingTop: 8, fontWeight: "700" },
-  notification: { minHeight: 78, borderRadius: 16, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.card, padding: 14, flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
-  toggle: { width: 48, height: 28, borderRadius: 14, backgroundColor: colors.red, padding: 3 },
-  toggleOff: { backgroundColor: "#E5E5E5" },
-  knob: { width: 22, height: 22, borderRadius: 11, backgroundColor: "#fff", alignSelf: "flex-end" },
-  knobOff: { alignSelf: "flex-start" },
-  profile: { flexDirection: "row", alignItems: "center", gap: 14 },
-  avatar: { width: 62, height: 62, borderRadius: 31, backgroundColor: colors.red, alignItems: "center", justifyContent: "center" },
-  avatarText: { color: "#fff", fontSize: 24, fontWeight: "900" }
+// ─── Dashboard-specific Styles ────────────────────────────────────────────────
+const s = StyleSheet.create({
+  dashContainer:  { flex: 1, alignItems: "center", justifyContent: "space-between", paddingHorizontal: 24, paddingTop: 24, paddingBottom: 38 },
+  dashTop:        { alignItems: "center", marginTop: 6 },
+  welcomeHome:    { fontSize: 34, color: CREAM, fontStyle: "italic", fontWeight: "300", letterSpacing: 0.5 },
+  aromaTimer:     { fontSize: 28, color: "rgba(221,215,193,0.82)", fontWeight: "200", letterSpacing: 4, marginTop: 10 },
+  dashRoom:       { fontSize: 12, color: "rgba(221,215,193,0.52)", marginTop: 8, letterSpacing: 2, textTransform: "uppercase" },
+  fanWrapper:     { flex: 1, alignItems: "center", justifyContent: "center", paddingBottom: 8 },
+  dashBottom:     { alignItems: "center", gap: 8, width: "100%" },
+  airClean:       { fontSize: 20, color: "rgba(221,215,193,0.88)", fontStyle: "italic", fontWeight: "300" },
+  dashMetrics:    { color: "rgba(221,215,193,0.42)", fontSize: 11, letterSpacing: 3 },
+  dashNavRow:     { flexDirection: "row", gap: 8, marginTop: 12, flexWrap: "wrap", justifyContent: "center" },
+  dashPill:       { paddingHorizontal: 18, paddingVertical: 9, borderRadius: 22, backgroundColor: "rgba(221,215,193,0.11)", borderWidth: 1, borderColor: "rgba(221,215,193,0.17)" },
+  dashPillText:   { color: "rgba(221,215,193,0.84)", fontSize: 13, fontWeight: "600" },
 });
