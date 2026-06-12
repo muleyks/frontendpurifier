@@ -79,6 +79,9 @@ const routes = [
   "ForgotPassword",
   "ResetEmailSent",
   "PasswordResetSuccess",
+  "Devices",
+  "AddNewPurifier",
+  "PlacePurifier",
   "AddDevice",
   "DeviceFound",
   "WifiCredentials",
@@ -95,6 +98,14 @@ const routes = [
   "Settings",
   "Aroma",
   "DeviceManagement",
+  "DeviceControl",
+  "ActiveMode",
+  "FanSpeedSetting",
+  "AromaCartridge",
+  "TimerSetting",
+  "DeviceFilterMaintenance",
+  "DeviceSettings",
+  "AddCustomRoom",
   "Notifications",
   "FirmwareAvailable",
   "FirmwareUpdating",
@@ -102,7 +113,52 @@ const routes = [
   "UserProfile",
 ];
 
+const SCREENS_WITHOUT_HOME_NAV = new Set([
+  "Welcome",
+  "Language",
+  "SignIn",
+  "CreateAccount",
+  "Dashboard",
+  "AuthChoice",
+  "VerifyEmail",
+  "CreatePassword",
+  "AccountCreated",
+  "ForgotPassword",
+  "ResetEmailSent",
+  "PasswordResetSuccess",
+]);
+
 // ─── Layout Components ────────────────────────────────────────────────────────
+const HOME_ICON_COLOR = "#E4DCBC";
+
+function HomeNavButton({ navigation }) {
+  return (
+    <SafeAreaView pointerEvents="box-none" style={{ position: "absolute", top: 0, right: 0, left: 0, zIndex: 100, alignItems: "flex-end" }}>
+      <View style={{ marginTop: 20, minHeight: 38, justifyContent: "center", paddingRight: 18 }}>
+        <TouchableOpacity
+          activeOpacity={0.75}
+          onPress={() => navigation.navigate("Dashboard")}
+          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+        >
+          <Ionicons name="home-outline" size={26} color={HOME_ICON_COLOR} />
+        </TouchableOpacity>
+      </View>
+    </SafeAreaView>
+  );
+}
+
+function withHomeNav(ScreenComponent, routeName) {
+  if (SCREENS_WITHOUT_HOME_NAV.has(routeName)) return ScreenComponent;
+  return function ScreenWithHomeNav(props) {
+    return (
+      <View style={{ flex: 1 }}>
+        <ScreenComponent {...props} />
+        <HomeNavButton navigation={props.navigation} />
+      </View>
+    );
+  };
+}
+
 function DarkScreen({ children, gradient = G_NEUTRAL, padded = true, scroll = true }) {
   const isQuality = gradient === G_QUALITY || gradient === G_TERRACOTTA;
   const inner = scroll ? (
@@ -208,6 +264,137 @@ function MauveOmbreButton({ label, onPress }) {
   );
 }
 
+function MauveFlatButton({ label, onPress }) {
+  return (
+    <TouchableOpacity
+      activeOpacity={0.88}
+      onPress={onPress}
+      style={{
+        width: "100%",
+        height: 52,
+        borderRadius: 16,
+        backgroundColor: pal.mauve,
+        alignItems: "center",
+        justifyContent: "center",
+        borderWidth: 1,
+        borderColor: "rgba(176,141,141,0.55)",
+      }}
+    >
+      <Text style={{ color: MAUVE_BTN_TEXT, fontWeight: "700", fontSize: 15, letterSpacing: 0.4 }}>{label}</Text>
+    </TouchableOpacity>
+  );
+}
+
+function PulseGlowInviteCard({ children, ringId = "Invite", variant = "tealTerracotta", animate = true, oval = false }) {
+  const pulse = useRef(new Animated.Value(animate ? 0 : 1)).current;
+  const ringSize = Math.min(width - 48, 320);
+  const h = ringSize * (oval ? 1.22 : 1.08);
+  const cx = ringSize / 2;
+  const cy = h / 2;
+  const id = ringId;
+  const isPurple = variant === "tealTerracottaPurple";
+
+  useEffect(() => {
+    if (!animate) return undefined;
+    const anim = Animated.loop(
+      Animated.sequence([
+        Animated.timing(pulse, { toValue: 1, duration: 2800, easing: Easing.inOut(Easing.sin), useNativeDriver: true }),
+        Animated.timing(pulse, { toValue: 0, duration: 2800, easing: Easing.inOut(Easing.sin), useNativeDriver: true }),
+      ])
+    );
+    anim.start();
+    return () => anim.stop();
+  }, [pulse, animate]);
+
+  const glowOpacity = animate ? pulse.interpolate({ inputRange: [0, 1], outputRange: [0.5, 1] }) : 1;
+  const ringScale = animate ? pulse.interpolate({ inputRange: [0, 1], outputRange: [1, 1.045] }) : 1;
+
+  const ringSvg = (
+    <Svg width={ringSize} height={h}>
+      <Defs>
+        <RadialGradient id={`inviteHalo${id}`} cx="50%" cy="50%" r="50%">
+          <Stop offset="0%" stopColor={pal.teal} stopOpacity="0" />
+          <Stop offset="38%" stopColor="#4AACA9" stopOpacity={isPurple ? "0.22" : "0.08"} />
+          <Stop offset="55%" stopColor={pal.teal} stopOpacity={isPurple ? "0.32" : "0.08"} />
+          <Stop offset="68%" stopColor={pal.terracotta} stopOpacity={isPurple ? "0.48" : "0.22"} />
+          <Stop offset="82%" stopColor={isPurple ? "#DA7A59" : "#DA7A59"} stopOpacity={isPurple ? "0.58" : "0.32"} />
+          <Stop offset="100%" stopColor={isPurple ? pal.purple : pal.teal} stopOpacity={isPurple ? "0.42" : "0.14"} />
+        </RadialGradient>
+        <RadialGradient id={`inviteMid${id}`} cx="50%" cy="48%" r="50%">
+          <Stop offset="0%" stopColor={CREAM} stopOpacity={isPurple ? "0.12" : "0"} />
+          <Stop offset="40%" stopColor={pal.terracotta} stopOpacity={isPurple ? "0.32" : "0.14"} />
+          <Stop offset="58%" stopColor={isPurple ? pal.mauve : pal.terracotta} stopOpacity={isPurple ? "0.38" : "0.14"} />
+          <Stop offset="72%" stopColor="#4AACA9" stopOpacity={isPurple ? "0.42" : "0.20"} />
+          <Stop offset="100%" stopColor={isPurple ? pal.purple : pal.teal} stopOpacity="0" />
+        </RadialGradient>
+      </Defs>
+      <Ellipse cx={cx} cy={cy} rx={ringSize * 0.49} ry={h * (oval ? 0.48 : 0.47)} fill={`url(#inviteHalo${id})`} />
+      <Ellipse cx={cx} cy={cy - (oval ? 4 : 2)} rx={ringSize * 0.38} ry={h * (oval ? 0.40 : 0.36)} fill={`url(#inviteMid${id})`} />
+      {oval ? (
+        <>
+          <Ellipse cx={cx} cy={cy} rx={ringSize * 0.44} ry={h * 0.42} fill="none" stroke={pal.teal} strokeWidth={2.5} strokeOpacity={isPurple ? 0.32 : 0.14} />
+          <Ellipse cx={cx} cy={cy} rx={ringSize * 0.41} ry={h * 0.39} fill="none" stroke="#4AACA9" strokeWidth={1.5} strokeOpacity={isPurple ? 0.45 : 0.22} />
+          <Ellipse cx={cx} cy={cy} rx={ringSize * 0.46} ry={h * 0.44} fill="none" stroke={pal.terracotta} strokeWidth={2} strokeOpacity={isPurple ? 0.42 : 0.16} />
+          <Ellipse cx={cx} cy={cy} rx={ringSize * 0.48} ry={h * 0.46} fill="none" stroke={isPurple ? pal.purple : "#DA7A59"} strokeWidth={1} strokeOpacity={isPurple ? 0.38 : 0.12} />
+        </>
+      ) : (
+        <>
+          <Circle cx={cx} cy={cy} r={ringSize * 0.44} fill="none" stroke={pal.teal} strokeWidth={2.5} strokeOpacity={isPurple ? 0.32 : 0.14} />
+          <Circle cx={cx} cy={cy} r={ringSize * 0.41} fill="none" stroke="#4AACA9" strokeWidth={1.5} strokeOpacity={isPurple ? 0.45 : 0.22} />
+          <Circle cx={cx} cy={cy} r={ringSize * 0.46} fill="none" stroke={pal.terracotta} strokeWidth={2} strokeOpacity={isPurple ? 0.42 : 0.16} />
+          <Circle cx={cx} cy={cy} r={ringSize * 0.48} fill="none" stroke={isPurple ? pal.purple : "#DA7A59"} strokeWidth={1} strokeOpacity={isPurple ? 0.38 : 0.12} />
+        </>
+      )}
+    </Svg>
+  );
+
+  const ringBody = (
+    <>
+      {animate ? (
+        <Animated.View pointerEvents="none" style={{ position: "absolute", width: ringSize, height: h, opacity: glowOpacity }}>
+          {ringSvg}
+        </Animated.View>
+      ) : (
+        <View pointerEvents="none" style={{ position: "absolute", width: ringSize, height: h }}>
+          {ringSvg}
+        </View>
+      )}
+      <View style={{ width: ringSize * 0.74, alignItems: "center", gap: 14, paddingVertical: oval ? 20 : 10 }}>
+        {children}
+      </View>
+    </>
+  );
+
+  return (
+    <View style={{ width: "100%", alignItems: "center" }}>
+      {animate ? (
+        <Animated.View
+          style={{
+            width: ringSize,
+            height: h,
+            alignItems: "center",
+            justifyContent: "center",
+            transform: [{ scale: ringScale }],
+          }}
+        >
+          {ringBody}
+        </Animated.View>
+      ) : (
+        <View
+          style={{
+            width: ringSize,
+            height: h,
+            alignItems: "center",
+            justifyContent: "center",
+          }}
+        >
+          {ringBody}
+        </View>
+      )}
+    </View>
+  );
+}
+
 function SoftTerracottaOmbreButton({ label, onPress }) {
   return (
     <View style={{ width: "100%" }}>
@@ -245,6 +432,50 @@ function GlassCard({ children, style }) {
   return (
     <View style={[{ backgroundColor: pal.glass, borderRadius: 20, borderWidth: 1, borderColor: pal.glassBorder, padding: 16, gap: 10 }, style]}>
       {children}
+    </View>
+  );
+}
+
+function TealTerracottaOmbreCard({ children, style }) {
+  return (
+    <View style={{ width: "100%" }}>
+      <LinearGradient
+        colors={[
+          "rgba(74,172,169,0.07)",
+          "rgba(176,152,136,0.09)",
+          "rgba(200,112,80,0.07)",
+          "rgba(74,139,122,0.06)",
+        ]}
+        locations={[0, 0.38, 0.68, 1]}
+        start={{ x: 0.12, y: 0.06 }}
+        end={{ x: 0.88, y: 0.94 }}
+        style={{ borderRadius: 22, padding: 1 }}
+      >
+        <View
+          style={{
+            borderRadius: 21,
+            overflow: "hidden",
+            backgroundColor: "rgba(22,14,4,0.28)",
+            borderWidth: 1,
+            borderColor: "rgba(221,215,193,0.05)",
+          }}
+        >
+          <LinearGradient
+            colors={[
+              "rgba(74,139,122,0.11)",
+              "rgba(188,152,152,0.08)",
+              "rgba(200,112,80,0.09)",
+              "rgba(74,172,169,0.05)",
+            ]}
+            locations={[0, 0.4, 0.72, 1]}
+            start={{ x: 0.18, y: 0.08 }}
+            end={{ x: 0.82, y: 0.92 }}
+            style={StyleSheet.absoluteFillObject}
+            pointerEvents="none"
+          />
+          <View style={[{ padding: 18, gap: 10 }, style]}>{children}</View>
+        </View>
+      </LinearGradient>
     </View>
   );
 }
@@ -559,6 +790,74 @@ function FanSpiral({ size = 220, bladeColors, centerColor }) {
   );
 }
 
+function SelectRow({ icon, title, selected, onPress, iconLib = "ionicons" }) {
+  const IconComponent = iconLib === "mci" ? MaterialCommunityIcons : Ionicons;
+  return (
+    <TouchableOpacity
+      activeOpacity={0.85}
+      onPress={onPress}
+      style={{
+        minHeight: 60,
+        borderRadius: 16,
+        borderWidth: 1,
+        borderColor: selected ? pal.mauve : pal.glassBorder,
+        backgroundColor: selected ? `${pal.mauve}28` : pal.glass,
+        paddingHorizontal: 14,
+        flexDirection: "row",
+        alignItems: "center",
+        gap: 12,
+      }}
+    >
+      <IconComponent name={icon} size={20} color={selected ? pal.mauve : pal.teal} />
+      <Text style={{ flex: 1, fontSize: 14, fontWeight: "600", color: selected ? pal.white : pal.w88 }}>{title}</Text>
+      {selected ? <Text style={{ color: pal.w55, fontSize: 12 }}>Selected</Text> : null}
+      <Ionicons name="chevron-forward" size={15} color={pal.w30} />
+    </TouchableOpacity>
+  );
+}
+
+function ControlTile({ icon, iconLib = "ionicons", value, label, onPress, readOnly = false }) {
+  const IconComponent = iconLib === "mci" ? MaterialCommunityIcons : Ionicons;
+  const content = (
+    <>
+      <IconComponent name={icon} size={28} color={pal.teal} />
+      <Text style={{ fontSize: 18, fontWeight: "700", color: pal.white }}>{value}</Text>
+      <Text style={{ fontSize: 12, color: pal.w55, letterSpacing: 0.3 }}>{label}</Text>
+    </>
+  );
+  const style = {
+    flex: 1,
+    minWidth: "46%",
+    aspectRatio: 1,
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: pal.glassBorder,
+    backgroundColor: pal.glass,
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 8,
+    padding: 14,
+  };
+
+  if (readOnly || !onPress) {
+    return <View style={style}>{content}</View>;
+  }
+
+  return (
+    <TouchableOpacity activeOpacity={0.85} onPress={onPress} style={style}>
+      {content}
+    </TouchableOpacity>
+  );
+}
+
+function PurifierIllustration({ size = 100 }) {
+  return (
+    <View style={{ alignItems: "center", justifyContent: "center", paddingVertical: 6 }}>
+      <FanSpiral size={size * 0.85} />
+    </View>
+  );
+}
+
 function lerpHexColor(from, to, t) {
   const parse = (hex) => {
     const h = hex.replace("#", "");
@@ -824,17 +1123,18 @@ function AuthChoice({ navigation }) {
   return (
     <DarkScreen gradient={G_WARM} padded={false} scroll={false}>
       <View style={{ flex: 1, paddingHorizontal: 28, paddingBottom: 48 }}>
-        <View style={{ height: height * 0.22 }} />
-        <View style={{ alignItems: "center", gap: 14, flex: 1, justifyContent: "flex-start" }}>
-          <FanSpiral
-            size={width * 0.5}
-            bladeColors={[`rgba(${CREAM_RGB},0.88)`, `rgba(${CREAM_RGB},0.88)`, `rgba(${CREAM_RGB},0.88)`]}
-            centerColor={CREAM}
-          />
-          <Text style={{ color: CREAM, fontSize: 26, fontWeight: "700" }}>My Purifier</Text>
-          <Text style={{ color: CREAM, fontSize: 13, textAlign: "center", lineHeight: 20 }}>
-            Control air quality, sleep mode, filters, and aroma.
-          </Text>
+        <View style={{ flex: 1, alignItems: "center", justifyContent: "center" }}>
+          <PulseGlowInviteCard ringId="Auth" variant="tealTerracottaPurple" animate={false} oval>
+            <FanSpiral
+              size={width * 0.42}
+              bladeColors={[`rgba(${CREAM_RGB},0.88)`, `rgba(${CREAM_RGB},0.88)`, `rgba(${CREAM_RGB},0.88)`]}
+              centerColor={CREAM}
+            />
+            <Text style={{ color: CREAM, fontSize: 26, fontWeight: "700" }}>My Purifier</Text>
+            <Text style={{ color: CREAM, fontSize: 13, textAlign: "center", lineHeight: 20 }}>
+              Control air quality, sleep mode, filters, and aroma.
+            </Text>
+          </PulseGlowInviteCard>
         </View>
         <View style={{ width: "100%" }}>
           <MauveOmbreButton label="Log In" onPress={() => navigation.navigate("SignIn")} />
@@ -874,9 +1174,9 @@ function SignIn({ navigation }) {
           <Text style={{ color: pal.khaki, fontWeight: "700", fontSize: 12 }}>Forgot password?</Text>
         </TouchableOpacity>
       </View>
-      <MauveOmbreButton label="Log In" onPress={() => navigation.navigate("AddDevice")} />
+      <MauveOmbreButton label="Log In" onPress={() => navigation.navigate("Devices")} />
       <Text style={{ textAlign: "center", color: pal.w30, fontSize: 12 }}>or</Text>
-      <GlassButton label="Continue with Google" onPress={() => navigation.navigate("AddDevice")} />
+      <GlassButton label="Continue with Google" onPress={() => navigation.navigate("Devices")} />
     </DarkScreen>
   );
 }
@@ -1054,6 +1354,189 @@ function PasswordResetSuccess({ navigation }) {
   );
 }
 
+// ─── Setup Flow (post-login) ──────────────────────────────────────────────────
+function Devices({ navigation }) {
+  const { devices } = useRooms();
+  const isEmpty = devices.length === 0;
+
+  return (
+    <DarkScreen gradient={G_WARM} scroll={!isEmpty}>
+      <DarkHeader title="Devices" subtitle="Select a purifier to continue" navigation={navigation.canGoBack() ? navigation : null} />
+      {isEmpty ? (
+        <View style={{ flex: 1, justifyContent: "center", paddingBottom: 48 }}>
+          <PulseGlowInviteCard>
+            <PurifierIllustration size={120} />
+            <Text style={{ fontSize: 18, fontWeight: "700", color: pal.white }}>0 Devices Connected</Text>
+            <Text style={{ fontSize: 13, color: pal.w70, textAlign: "center", lineHeight: 20 }}>
+              Add or reconnect a purifier to start controlling air
+            </Text>
+            <MauveFlatButton label="Add New Purifier" onPress={() => navigation.navigate("AddNewPurifier")} />
+          </PulseGlowInviteCard>
+        </View>
+      ) : (
+        <>
+          {devices.map((device) => (
+            <DeviceCard key={device.id} device={device} navigation={navigation} compact />
+          ))}
+          <GlassButton label="Add New Purifier" onPress={() => navigation.navigate("AddNewPurifier")} />
+          <MauveOmbreButton label="Open Dashboard" onPress={() => navigation.navigate("Dashboard")} />
+        </>
+      )}
+    </DarkScreen>
+  );
+}
+
+function AddNewPurifier({ navigation }) {
+  return (
+    <DarkScreen gradient={G_WARM} scroll={false}>
+      <View style={{ flex: 1, gap: 14 }}>
+        <DarkHeader title="Add New Purifier" subtitle="Start purifier setup" navigation={navigation} />
+        <View style={{ flex: 1, justifyContent: "center", paddingBottom: 8 }}>
+          <PulseGlowInviteCard ringId="Setup">
+            <PurifierIllustration size={130} />
+            <Text style={{ fontSize: 18, fontWeight: "700", color: pal.white }}>Vestel VHT-402 WiFi</Text>
+            <Text style={{ fontSize: 13, color: pal.w55, textAlign: "center", lineHeight: 20, paddingHorizontal: 12 }}>
+              Power on the purifier and keep it near your router.
+            </Text>
+          </PulseGlowInviteCard>
+        </View>
+        <MauveOmbreButton label="Continue Setup" onPress={() => navigation.navigate("PlacePurifier")} />
+      </View>
+    </DarkScreen>
+  );
+}
+
+function PlacePurifier({ navigation }) {
+  const { allRoomOptions, pairingRoomId, setPairingRoomId, addCustomRoom } = useRooms();
+  const [customName, setCustomName] = useState("");
+  const [customError, setCustomError] = useState("");
+  const pairingRoom = allRoomOptions.find((room) => room.id === pairingRoomId) ?? allRoomOptions[0];
+
+  const handleAddCustomRoom = () => {
+    const trimmed = customName.trim();
+    if (!trimmed) {
+      setCustomError("Enter a room name");
+      return;
+    }
+    if (!addCustomRoom(trimmed)) {
+      setCustomError("This room already exists");
+      return;
+    }
+    setCustomName("");
+    setCustomError("");
+  };
+
+  return (
+    <DarkScreen gradient={G_WARM}>
+      <DarkHeader title="Place your purifier" subtitle="Where would you like to place this purifier?" navigation={navigation} />
+      <TealTerracottaOmbreCard style={{ alignItems: "center", gap: 10 }}>
+        <PurifierIllustration size={100} />
+        <Text style={{ fontSize: 17, fontWeight: "700", color: pal.white }}>{pairingRoom.name} Purifier</Text>
+        <Text style={{ fontSize: 13, color: pal.w55 }}>Selected room: {pairingRoom.name}</Text>
+      </TealTerracottaOmbreCard>
+      {allRoomOptions.map((room) => (
+        <SelectRow
+          key={room.id}
+          icon={room.icon || "home-outline"}
+          title={room.isCustom ? `${room.name} · Custom` : room.name}
+          selected={room.id === pairingRoomId}
+          onPress={() => setPairingRoomId(room.id)}
+        />
+      ))}
+      <GlassCard style={{ gap: 10 }}>
+        <Text style={{ fontSize: 13, fontWeight: "700", color: pal.white }}>Add custom room</Text>
+        <Text style={{ fontSize: 12, color: pal.w55, lineHeight: 18 }}>
+          Create a new room name alongside the defaults above.
+        </Text>
+        <GlassField
+          label="Room name"
+          value={customName}
+          onChangeText={(text) => {
+            setCustomName(text);
+            setCustomError("");
+          }}
+          placeholder="e.g. Home Office, Nursery"
+          autoCapitalize="words"
+        />
+        {customError ? <Text style={{ color: "#C84545", fontSize: 12 }}>{customError}</Text> : null}
+        <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8 }}>
+          {ROOM_PRESETS.map((preset) => {
+            const taken = allRoomOptions.some((room) => room.name.toLowerCase() === preset.toLowerCase());
+            const selected = customName.toLowerCase() === preset.toLowerCase();
+            return (
+              <TouchableOpacity
+                key={preset}
+                activeOpacity={0.85}
+                disabled={taken}
+                onPress={() => {
+                  setCustomName(preset);
+                  setCustomError("");
+                }}
+                style={{
+                  paddingHorizontal: 12,
+                  paddingVertical: 8,
+                  borderRadius: 16,
+                  borderWidth: 1,
+                  opacity: taken ? 0.4 : 1,
+                  borderColor: selected ? pal.mauve : pal.glassBorder,
+                  backgroundColor: selected ? `${pal.mauve}28` : pal.glass,
+                }}
+              >
+                <Text style={{ color: selected ? pal.white : pal.w70, fontSize: 12, fontWeight: "600" }}>{preset}</Text>
+              </TouchableOpacity>
+            );
+          })}
+        </View>
+        <GlassButton label="Add room" onPress={handleAddCustomRoom} />
+      </GlassCard>
+      <MauveOmbreButton label="Continue to Wi-Fi" onPress={() => navigation.navigate("WifiCredentials")} />
+    </DarkScreen>
+  );
+}
+
+function DeviceCard({ device, navigation, compact = false }) {
+  const { activeRoomId, setActiveRoomId, removeDevice, disconnectDevice, connectDevice } = useRooms();
+  const isActive = device.roomId === activeRoomId && device.status !== "Disconnected";
+
+  return (
+    <View
+      style={{
+        borderRadius: 20,
+        borderWidth: 1,
+        borderColor: isActive ? pal.mauve : pal.glassBorder,
+        backgroundColor: isActive ? `${pal.mauve}22` : pal.glass,
+        overflow: "hidden",
+      }}
+    >
+      <TouchableOpacity
+        activeOpacity={0.85}
+        style={{ padding: 16, flexDirection: "row", alignItems: "center", gap: 12 }}
+        onPress={() => {
+          setActiveRoomId(device.roomId);
+          navigation.navigate("DeviceControl", { deviceId: device.id });
+        }}
+      >
+        <PurifierIllustration size={72} />
+        <View style={{ flex: 1, gap: 4 }}>
+          <Text style={{ fontSize: 16, fontWeight: "700", color: pal.white }}>{device.roomName} Purifier</Text>
+          <Text style={{ fontSize: 12, color: pal.w55 }}>{device.roomName} • {device.model}</Text>
+          <View style={{ alignSelf: "flex-start", marginTop: 4, paddingHorizontal: 10, paddingVertical: 4, borderRadius: 12, backgroundColor: device.status === "Disconnected" ? "rgba(221,215,193,0.12)" : `${pal.teal}30` }}>
+            <Text style={{ color: device.status === "Disconnected" ? pal.w55 : pal.teal, fontSize: 11, fontWeight: "700" }}>{device.status}</Text>
+          </View>
+        </View>
+        {!compact ? <Ionicons name="chevron-forward" size={18} color={pal.w30} /> : null}
+      </TouchableOpacity>
+      {!compact ? (
+        <View style={{ paddingHorizontal: 16, paddingBottom: 16, gap: 10 }}>
+          <GlassButton label="Connect Device" filled color={pal.teal} onPress={() => connectDevice(device.id)} />
+          <GlassButton label="Disconnect Device" onPress={() => disconnectDevice(device.id)} />
+          <GlassButton label="Delete Device" onPress={() => removeDevice(device.id)} />
+        </View>
+      ) : null}
+    </View>
+  );
+}
+
 // ─── Pairing Screens ──────────────────────────────────────────────────────────
 function AddDevice({ navigation }) {
   return (
@@ -1067,6 +1550,8 @@ function AddDevice({ navigation }) {
 }
 
 function DeviceFound({ navigation }) {
+  const { pairingRoom } = useRooms();
+
   return (
     <DarkScreen gradient={G_WARM} padded={false} scroll={false}>
       <View style={{ flex: 1, paddingHorizontal: 28, paddingTop: 28, paddingBottom: 44, justifyContent: "space-between" }}>
@@ -1078,7 +1563,7 @@ function DeviceFound({ navigation }) {
             centerColor={CREAM}
           />
           <Text style={{ color: CREAM, fontSize: 22, fontWeight: "700" }}>Vestel VHT-402 WiFi</Text>
-          <Text style={{ color: CREAM, fontSize: 13, textAlign: "center", lineHeight: 20 }}>Signal strong · Living Room</Text>
+          <Text style={{ color: CREAM, fontSize: 13, textAlign: "center", lineHeight: 20 }}>Signal strong · {pairingRoom.name}</Text>
         </View>
         <MauveOmbreButton label="Pair this purifier" onPress={() => navigation.navigate("WifiCredentials")} />
       </View>
@@ -1146,6 +1631,8 @@ function PairingProgress({ navigation }) {
 }
 
 function PairingSuccess({ navigation }) {
+  const { addPairedDevice, pairingRoomId } = useRooms();
+
   return (
     <DarkScreen gradient={G_WARM} padded={false} scroll={false}>
       <View style={{ flex: 1, paddingHorizontal: 28, paddingBottom: 44, justifyContent: "space-between" }}>
@@ -1154,7 +1641,13 @@ function PairingSuccess({ navigation }) {
           <Text style={{ fontSize: 24, fontWeight: "800", color: pal.white, textAlign: "center" }}>Purifier connected</Text>
           <Text style={{ fontSize: 13, color: pal.w55, textAlign: "center", lineHeight: 20 }}>Air quality monitoring is active.</Text>
         </View>
-        <MauveOmbreButton label="Go to Dashboard" onPress={() => navigation.navigate("Dashboard")} />
+        <MauveOmbreButton
+          label="Go to Device Management"
+          onPress={() => {
+            addPairedDevice(pairingRoomId);
+            navigation.navigate("DeviceManagement");
+          }}
+        />
       </View>
     </DarkScreen>
   );
@@ -1172,68 +1665,287 @@ function PairingError({ navigation }) {
   );
 }
 
-// ─── Aroma Timer (shared) ─────────────────────────────────────────────────────
+// ─── Device Timers (per-device aroma + purifier) ──────────────────────────────
 function formatDuration(totalSec) {
-  const m = Math.floor(totalSec / 60);
+  const h = Math.floor(totalSec / 3600);
+  const m = Math.floor((totalSec % 3600) / 60);
   const s = totalSec % 60;
+  if (h > 0) return `${h}:${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
   return `${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
 }
 
-const AromaTimerContext = createContext(null);
+function shutOffLabelToSeconds(label) {
+  switch (label) {
+    case "30 min": return 30 * 60;
+    case "1 hour": return 3600;
+    case "2 hours": return 7200;
+    case "4 hours": return 14400;
+    default: return null;
+  }
+}
 
-function AromaTimerProvider({ children }) {
-  const [secondsRemaining, setSecondsRemaining] = useState(null);
-  const [isRunning, setIsRunning] = useState(false);
-  const [isPaused, setIsPaused] = useState(false);
+const emptyTimerSlot = () => ({ secondsRemaining: null, isRunning: false, isPaused: false });
+
+function ensureDeviceTimers(state, deviceId) {
+  if (state[deviceId]) return state;
+  return {
+    ...state,
+    [deviceId]: { aroma: emptyTimerSlot(), purifier: emptyTimerSlot() },
+  };
+}
+
+const DeviceTimersContext = createContext(null);
+
+function DeviceTimersProvider({ children }) {
+  const [timers, setTimers] = useState({});
 
   useEffect(() => {
-    if (!isRunning || isPaused || secondsRemaining === null || secondsRemaining <= 0) return;
-    const timer = setInterval(() => {
-      setSecondsRemaining((current) => {
-        if (current === null || current <= 1) {
-          setIsRunning(false);
-          setIsPaused(false);
-          return 0;
+    const interval = setInterval(() => {
+      setTimers((current) => {
+        let next = null;
+        for (const deviceId of Object.keys(current)) {
+          const deviceTimers = current[deviceId];
+          let deviceChanged = false;
+          const updatedDevice = { ...deviceTimers };
+          for (const type of ["aroma", "purifier"]) {
+            const slot = deviceTimers[type];
+            if (slot?.isRunning && !slot.isPaused && slot.secondsRemaining > 0) {
+              const remaining = slot.secondsRemaining - 1;
+              updatedDevice[type] = {
+                ...slot,
+                secondsRemaining: remaining,
+                isRunning: remaining > 0,
+                isPaused: false,
+              };
+              deviceChanged = true;
+            }
+          }
+          if (deviceChanged) {
+            if (!next) next = { ...current };
+            next[deviceId] = updatedDevice;
+          }
         }
-        return current - 1;
+        return next || current;
       });
     }, 1000);
-    return () => clearInterval(timer);
-  }, [isRunning, isPaused, secondsRemaining]);
+    return () => clearInterval(interval);
+  }, []);
 
-  const startTimer = (totalSeconds) => {
-    setSecondsRemaining(totalSeconds);
-    setIsRunning(true);
-    setIsPaused(false);
+  const startTimer = (deviceId, type, totalSeconds) => {
+    setTimers((current) => {
+      const base = ensureDeviceTimers(current, deviceId);
+      return {
+        ...base,
+        [deviceId]: {
+          ...base[deviceId],
+          [type]: { secondsRemaining: totalSeconds, isRunning: true, isPaused: false },
+        },
+      };
+    });
   };
 
-  const pauseTimer = () => {
-    setIsRunning(false);
-    setIsPaused(true);
+  const pauseTimer = (deviceId, type) => {
+    setTimers((current) => {
+      const base = ensureDeviceTimers(current, deviceId);
+      const slot = base[deviceId][type];
+      return {
+        ...base,
+        [deviceId]: {
+          ...base[deviceId],
+          [type]: { ...slot, isRunning: false, isPaused: true },
+        },
+      };
+    });
   };
 
-  const resumeTimer = () => {
-    if (secondsRemaining > 0) {
-      setIsRunning(true);
-      setIsPaused(false);
-    }
+  const resumeTimer = (deviceId, type) => {
+    setTimers((current) => {
+      const base = ensureDeviceTimers(current, deviceId);
+      const slot = base[deviceId][type];
+      if (slot.secondsRemaining > 0) {
+        return {
+          ...base,
+          [deviceId]: {
+            ...base[deviceId],
+            [type]: { ...slot, isRunning: true, isPaused: false },
+          },
+        };
+      }
+      return base;
+    });
+  };
+
+  const getDeviceTimers = (deviceId) => {
+    const device = timers[deviceId];
+    if (!device) return { aroma: emptyTimerSlot(), purifier: emptyTimerSlot() };
+    return device;
   };
 
   return (
-    <AromaTimerContext.Provider value={{ secondsRemaining, isRunning, isPaused, startTimer, pauseTimer, resumeTimer }}>
+    <DeviceTimersContext.Provider value={{ startTimer, pauseTimer, resumeTimer, getDeviceTimers }}>
       {children}
-    </AromaTimerContext.Provider>
+    </DeviceTimersContext.Provider>
   );
 }
 
-function useAromaTimer() {
-  return useContext(AromaTimerContext);
+function useDeviceTimers() {
+  return useContext(DeviceTimersContext);
+}
+
+// ─── Rooms (shared) ───────────────────────────────────────────────────────────
+const BASE_ROOM_OPTIONS = [
+  { id: "living-room", name: "Living Room", icon: "home-outline" },
+  { id: "bedroom", name: "Bedroom", icon: "home-outline" },
+  { id: "kitchen", name: "Kitchen", icon: "home-outline" },
+  { id: "office", name: "Office", icon: "home-outline" },
+];
+
+const ROOM_PRESETS = ["Nursery", "Garage", "Study", "Balcony"];
+
+const RoomsContext = createContext(null);
+
+function RoomsProvider({ children }) {
+  const [customRooms, setCustomRooms] = useState([]);
+  const [devices, setDevices] = useState([]);
+  const [activeRoomId, setActiveRoomId] = useState("living-room");
+  const [pairingRoomId, setPairingRoomId] = useState("living-room");
+
+  const allRoomOptions = [...BASE_ROOM_OPTIONS, ...customRooms];
+
+  const addCustomRoom = (name) => {
+    const trimmed = name.trim();
+    if (!trimmed) return false;
+    if (allRoomOptions.some((room) => room.name.toLowerCase() === trimmed.toLowerCase())) return false;
+    const id = `custom-${Date.now()}`;
+    const room = { id, name: trimmed, icon: "home-outline", isCustom: true };
+    setCustomRooms((prev) => [...prev, room]);
+    setPairingRoomId(id);
+    setActiveRoomId(id);
+    return true;
+  };
+
+  const setActiveRoom = (roomId) => {
+    setActiveRoomId(roomId);
+  };
+
+  const addPairedDevice = (roomId) => {
+    const room = allRoomOptions.find((item) => item.id === roomId);
+    if (!room) return;
+    setDevices((prev) => {
+      const withoutRoom = prev.filter((device) => device.roomId !== roomId);
+      return [
+        ...withoutRoom,
+        {
+          id: `device-${Date.now()}`,
+          roomId,
+          roomName: room.name,
+          model: "VESTEL VHT-402 WiFi",
+          status: "Active",
+        },
+      ];
+    });
+    setActiveRoomId(roomId);
+  };
+
+  const removeDevice = (deviceId) => {
+    setDevices((prev) => prev.filter((device) => device.id !== deviceId));
+  };
+
+  const disconnectDevice = (deviceId) => {
+    setDevices((prev) =>
+      prev.map((device) => (device.id === deviceId ? { ...device, status: "Disconnected" } : device))
+    );
+  };
+
+  const connectDevice = (deviceId) => {
+    let roomId = activeRoomId;
+    setDevices((prev) => {
+      const target = prev.find((device) => device.id === deviceId);
+      if (!target) return prev;
+      roomId = target.roomId;
+      return prev.map((device) =>
+        device.id === deviceId ? { ...device, status: "Active" } : device
+      );
+    });
+    setActiveRoomId(roomId);
+  };
+
+  const activeDevices = devices.filter((device) => device.status === "Active");
+
+  const activeRoom = allRoomOptions.find((room) => room.id === activeRoomId) ?? allRoomOptions[0];
+  const pairingRoom = allRoomOptions.find((room) => room.id === pairingRoomId) ?? allRoomOptions[0];
+
+  return (
+    <RoomsContext.Provider
+      value={{
+        allRoomOptions,
+        customRooms,
+        devices,
+        activeDevices,
+        activeRoom,
+        activeRoomId,
+        setActiveRoomId: setActiveRoom,
+        pairingRoomId,
+        setPairingRoomId,
+        pairingRoom,
+        addCustomRoom,
+        addPairedDevice,
+        removeDevice,
+        disconnectDevice,
+        connectDevice,
+      }}
+    >
+      {children}
+    </RoomsContext.Provider>
+  );
+}
+
+function useRooms() {
+  return useContext(RoomsContext);
+}
+
+// ─── Device Settings (shared) ─────────────────────────────────────────────────
+const DEFAULT_DEVICE_SETTINGS = {
+  activeMode: "Sleep",
+  fanSpeed: 40,
+  aromaLevel: 62,
+  timer: "Off",
+  aqi: 42,
+  aqiLabel: "Good",
+  pm25: 8,
+  hepaLife: 100,
+  carbonLife: 100,
+  uvLife: 100,
+};
+
+const DeviceSettingsContext = createContext(null);
+
+function DeviceSettingsProvider({ children }) {
+  const [settings, setSettings] = useState(DEFAULT_DEVICE_SETTINGS);
+
+  const updateSettings = (patch) => {
+    setSettings((prev) => ({ ...prev, ...patch }));
+  };
+
+  return (
+    <DeviceSettingsContext.Provider value={{ settings, updateSettings }}>
+      {children}
+    </DeviceSettingsContext.Provider>
+  );
+}
+
+function useDeviceSettings() {
+  return useContext(DeviceSettingsContext);
 }
 
 // ─── Main App Screens ─────────────────────────────────────────────────────────
 function Dashboard({ navigation }) {
-  const { secondsRemaining } = useAromaTimer();
-  const showAromaTimer = secondsRemaining !== null && secondsRemaining > 0;
+  const { getDeviceTimers } = useDeviceTimers();
+  const { activeDevices, setActiveRoomId } = useRooms();
+
+  const auraSize = width * 0.92;
+  const auraTopY = height * 0.5 - auraSize * 0.5;
+  const listTopY = auraTopY + 6;
 
   return (
     <LinearGradient colors={G_MAUVE} style={{ flex: 1 }} start={{ x: 0.2, y: 0 }} end={{ x: 0.8, y: 1 }}>
@@ -1247,37 +1959,71 @@ function Dashboard({ navigation }) {
           </View>
 
           <View style={s.dashContainer}>
-            <View style={s.dashTop}>
-              <Text style={s.welcomeHome}>Home</Text>
-              {showAromaTimer && (
-                <Text style={s.aromaTimer}>{formatDuration(secondsRemaining)}</Text>
-              )}
-              <Text style={s.dashRoom}>Living Room</Text>
-            </View>
-
             <TouchableOpacity
-              style={s.fanWrapper}
-              activeOpacity={0.85}
-              onPress={() => navigation.navigate("FanControl")}
+              style={s.dashSettingsBtn}
+              activeOpacity={0.75}
+              onPress={() => navigation.navigate("Settings")}
             >
-              <FanSpiral size={width * 0.70} />
-              <BounceHint text="tap to change fan speed" />
+              <Ionicons name="settings-sharp" size={24} color="#4A2E5C" />
             </TouchableOpacity>
 
-            <View style={s.dashBottom}>
-              <Text style={s.airClean}>Air is clean</Text>
-              <Text style={s.dashMetrics}>PM2.5  12  |  TVOC  85</Text>
-              <View style={s.dashNavRow}>
-                {[
-                  ["Air Quality", "Analytics"],
-                  ["Filter", "FilterMaintenance"],
-                  ["Aroma", "Aroma"],
-                  ["Settings", "Settings"],
-                ].map(([label, route]) => (
-                  <TouchableOpacity key={route} style={s.dashPill} onPress={() => navigation.navigate(route)}>
-                    <Text style={s.dashPillText}>{label}</Text>
-                  </TouchableOpacity>
-                ))}
+            <View style={s.dashTopBar}>
+              <Text style={s.welcomeHome}>Home</Text>
+            </View>
+
+            <View style={[s.dashListBlock, { paddingTop: listTopY }]}>
+              <View style={s.activeDeviceList}>
+                {activeDevices.map((device) => {
+                  const { aroma, purifier } = getDeviceTimers(device.id);
+                  const showAroma = aroma.secondsRemaining !== null && aroma.secondsRemaining > 0;
+                  const showPurifier = purifier.secondsRemaining !== null && purifier.secondsRemaining > 0;
+
+                  return (
+                    <View key={device.id} style={s.activeDeviceBlock}>
+                      <TouchableOpacity
+                        activeOpacity={0.85}
+                        style={s.activeDeviceOval}
+                        onPress={() => {
+                          setActiveRoomId(device.roomId);
+                          navigation.navigate("DeviceControl", { deviceId: device.id });
+                        }}
+                      >
+                        <View style={s.activeDeviceIcon}>
+                          <FanSpiral size={36} />
+                        </View>
+                        <View style={{ flex: 1, gap: 2 }}>
+                          <Text style={s.activeDeviceTitle}>{device.roomName} Purifier</Text>
+                          <Text style={s.activeDeviceMeta}>{device.model}</Text>
+                        </View>
+                        <View style={s.activeDeviceBadge}>
+                          <Text style={s.activeDeviceBadgeText}>Active</Text>
+                        </View>
+                      </TouchableOpacity>
+                      {(showAroma || showPurifier) ? (
+                        <View style={s.deviceTimerRow}>
+                          {showAroma ? (
+                            <View style={s.deviceTimerChip}>
+                              <MaterialCommunityIcons name="flower" size={14} color={pal.burgundy} />
+                              <Text style={s.deviceTimerChipText}>
+                                Aroma {formatDuration(aroma.secondsRemaining)}
+                                {aroma.isPaused ? " · Paused" : ""}
+                              </Text>
+                            </View>
+                          ) : null}
+                          {showPurifier ? (
+                            <View style={s.deviceTimerChip}>
+                              <Ionicons name="timer-outline" size={14} color={pal.terracotta} />
+                              <Text style={s.deviceTimerChipText}>
+                                Shut-off {formatDuration(purifier.secondsRemaining)}
+                                {purifier.isPaused ? " · Paused" : ""}
+                              </Text>
+                            </View>
+                          ) : null}
+                        </View>
+                      ) : null}
+                    </View>
+                  );
+                })}
               </View>
             </View>
           </View>
@@ -1436,7 +2182,7 @@ function Settings({ navigation }) {
       </View>
       <DarkRow icon="brightness-6" title="Display" onPress={() => {}} />
       <DarkRow icon="bell-outline" title="Notifications" onPress={() => navigation.navigate("Notifications")} />
-      <DarkRow icon="information-outline" title="Device Info" onPress={() => navigation.navigate("DeviceManagement")} />
+      <DarkRow icon="information-outline" title="Device Management" onPress={() => navigation.navigate("DeviceManagement")} />
       <View style={{ height: 8 }} />
       <DarkRow icon="account-outline" title="Account" value="Mesud" onPress={() => navigation.navigate("UserProfile")} />
       <DarkRow icon="download" title="Firmware" value="v1.8.2" onPress={() => navigation.navigate("FirmwareAvailable")} />
@@ -1444,7 +2190,16 @@ function Settings({ navigation }) {
   );
 }
 
-function Aroma({ navigation }) {
+function Aroma({ navigation, route }) {
+  const { settings } = useDeviceSettings();
+  const { devices, activeRoom } = useRooms();
+  const { startTimer, pauseTimer, resumeTimer, getDeviceTimers } = useDeviceTimers();
+  const deviceId =
+    route?.params?.deviceId
+    ?? devices.find((item) => item.roomId === activeRoom.id)?.id
+    ?? devices.find((item) => item.status === "Active")?.id;
+  const { aroma: aromaTimer } = getDeviceTimers(deviceId);
+  const { secondsRemaining, isRunning, isPaused } = aromaTimer;
   const aromas = [
     { name: "Mint", icon: "leaf", accent: "#4A9C7A" },
     { name: "Lavender", icon: "flower", accent: "#9470B8" },
@@ -1458,7 +2213,6 @@ function Aroma({ navigation }) {
   const [selectedAroma, setSelectedAroma] = useState("Lavender");
   const [intensity, setIntensity] = useState(0.6);
   const [durationInput, setDurationInput] = useState("03:00");
-  const { secondsRemaining, isRunning, isPaused, startTimer, pauseTimer, resumeTimer } = useAromaTimer();
 
   const parseDurationInput = (text) => {
     const parts = (text || "00:00").split(":");
@@ -1496,19 +2250,24 @@ function Aroma({ navigation }) {
   };
 
   const handleTimerPress = () => {
+    if (!deviceId) return;
     if (secondsRemaining === null) {
       const total = Math.max(60, parseDurationInput(durationInput));
       setDurationInput(formatDuration(total));
-      startTimer(total);
+      startTimer(deviceId, "aroma", total);
       return;
     }
     if (isRunning) {
-      pauseTimer();
+      pauseTimer(deviceId, "aroma");
       return;
     }
     if (secondsRemaining > 0) {
-      resumeTimer();
+      resumeTimer(deviceId, "aroma");
     }
+  };
+
+  const handleSave = () => {
+    navigation.goBack();
   };
 
   return (
@@ -1516,8 +2275,16 @@ function Aroma({ navigation }) {
       <SafeAreaView style={{ flex: 1 }}>
         <StatusBar barStyle="light-content" />
         <ScrollView contentContainerStyle={{ paddingHorizontal: 22, paddingTop: 20, paddingBottom: 40, gap: 16 }} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
-          <DarkHeader title="Aroma" subtitle="Choose your scent" navigation={navigation} />
+          <DarkHeader title="Aroma" subtitle="Scent, timer & cartridge" navigation={navigation} />
 
+          <GlassCard style={{ gap: 12 }}>
+            <Text style={{ fontSize: 11, letterSpacing: 1.5, color: pal.w55, fontWeight: "600" }}>AROMA LEFT</Text>
+            <Text style={{ fontSize: 52, fontWeight: "700", color: pal.white }}>{settings.aromaLevel}%</Text>
+            <ProgressBar value={settings.aromaLevel / 100} color={pal.burgundy} />
+            <Text style={{ fontSize: 12, color: pal.w55 }}>Cartridge remaining</Text>
+          </GlassCard>
+
+          <Text style={{ color: pal.w55, fontSize: 11, letterSpacing: 2, textTransform: "uppercase", marginTop: 2 }}>Choose scent</Text>
           <View style={{ flexDirection: "row", gap: 10 }}>
             {aromas.map((a) => {
               const selected = a.name === selectedAroma;
@@ -1549,7 +2316,7 @@ function Aroma({ navigation }) {
                   key={label}
                   activeOpacity={0.85}
                   onPress={() => setIntensity(val)}
-                  style={{ flexDirection: "row", alignItems: "center", gap: 14 }}
+                  style={{ flexDirection: "row", alignItems: "center", gap: 14, paddingVertical: 4 }}
                 >
                   <View style={[{ width: 36, height: 36, borderRadius: 18, alignItems: "center", justifyContent: "center" }, selected && { backgroundColor: "rgba(221,215,193,0.20)" }]}>
                     <MaterialCommunityIcons name="flower" size={iconSize} color={selected ? pal.white : pal.w55} />
@@ -1561,8 +2328,8 @@ function Aroma({ navigation }) {
           </GlassCard>
 
           <GlassCard style={{ alignItems: "center", gap: 12 }}>
-            <Text style={{ color: pal.w55, fontSize: 11, letterSpacing: 2, textTransform: "uppercase" }}>Duration</Text>
-            <Text style={{ color: pal.w30, fontSize: 11 }}>max 60 minutes</Text>
+            <Text style={{ color: pal.w55, fontSize: 11, letterSpacing: 2, textTransform: "uppercase" }}>Diffuser timer</Text>
+            <Text style={{ color: pal.w30, fontSize: 11 }}>Session countdown · max 60 minutes</Text>
             {secondsRemaining === null ? (
               <TextInput
                 value={durationInput}
@@ -1599,21 +2366,335 @@ function Aroma({ navigation }) {
             </Text>
           </GlassCard>
 
-          <GlassButton label="Done" onPress={() => navigation.goBack()} filled color={pal.burgundy} />
+          <GlassButton label="Save settings" onPress={handleSave} filled color={pal.burgundy} />
         </ScrollView>
       </SafeAreaView>
     </LinearGradient>
   );
 }
 
-// ─── Device & Account Screens ─────────────────────────────────────────────────
-function DeviceManagement({ navigation }) {
+// ─── Device Control Screens ───────────────────────────────────────────────────
+function DeviceControl({ navigation, route }) {
+  const { activeRoom, devices } = useRooms();
+  const { settings } = useDeviceSettings();
+  const device = devices.find((item) => item.id === route?.params?.deviceId) ?? devices.find((item) => item.roomId === activeRoom.id);
+  const title = device ? `${device.roomName} Purifier` : `${activeRoom.name} Purifier`;
+
+  return (
+    <DarkScreen gradient={G_MAUVE}>
+      <DarkHeader title={title} subtitle="VESTEL VHT-402 WiFi" navigation={navigation} />
+      <GlassCard style={{ gap: 14, borderColor: `${pal.mauve}55` }}>
+        <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "flex-start" }}>
+          <View style={{ gap: 6 }}>
+            <Text style={{ fontSize: 11, letterSpacing: 1.5, color: pal.w55, fontWeight: "600" }}>AIR QUALITY INDEX</Text>
+            <Text style={{ fontSize: 28, fontWeight: "700", color: pal.white }}>{settings.aqiLabel}</Text>
+          </View>
+          <Text style={{ fontSize: 42, fontWeight: "700", color: pal.white }}>{settings.aqi}</Text>
+        </View>
+        <View style={{ borderRadius: 14, borderWidth: 1, borderColor: pal.glassBorder, backgroundColor: "rgba(221,215,193,0.06)", padding: 14, flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
+          <Text style={{ fontSize: 14, fontWeight: "600", color: pal.w88 }}>PM2.5 live</Text>
+          <View style={{ paddingHorizontal: 10, paddingVertical: 4, borderRadius: 12, backgroundColor: `${pal.teal}30` }}>
+            <Text style={{ color: pal.teal, fontSize: 12, fontWeight: "700" }}>{settings.pm25} µg/m³</Text>
+          </View>
+        </View>
+      </GlassCard>
+      <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 12 }}>
+        <ControlTile icon="moon" value={settings.activeMode} label="Mode" onPress={() => navigation.navigate("ActiveMode")} />
+        <ControlTile icon="fan" iconLib="mci" value={`${settings.fanSpeed}%`} label="Fan Speed" onPress={() => navigation.navigate("FanSpeedSetting")} />
+        <ControlTile icon="flower" iconLib="mci" value={`${settings.aromaLevel}%`} label="Aroma Left" onPress={() => navigation.navigate("Aroma", { deviceId: device?.id })} />
+        <ControlTile icon="timer-outline" value={settings.timer} label="Timer" onPress={() => navigation.navigate("TimerSetting", { deviceId: device?.id })} />
+      </View>
+      <View style={{ flexDirection: "row", gap: 12 }}>
+        <View style={{ flex: 1 }}>
+          <GlassButton label="Analytics" onPress={() => navigation.navigate("Analytics")} />
+        </View>
+        <View style={{ flex: 1 }}>
+          <GlassButton label="Settings" onPress={() => navigation.navigate("DeviceSettings")} />
+        </View>
+      </View>
+    </DarkScreen>
+  );
+}
+
+function ActiveMode({ navigation }) {
+  const { settings, updateSettings } = useDeviceSettings();
+  const [mode, setMode] = useState(settings.activeMode);
+  const modes = [
+    { id: "Sleep", icon: "moon" },
+    { id: "Auto", icon: "sparkles" },
+    { id: "Allergy", icon: "sparkles" },
+    { id: "Manual", icon: "sparkles" },
+  ];
+  const modeProgress = { Sleep: 0.33, Auto: 0.55, Allergy: 0.72, Manual: 1 };
+
+  return (
+    <DarkScreen gradient={G_TEAL}>
+      <DarkHeader title="Active Mode" subtitle="Choose the purifier behavior" navigation={navigation} />
+      <GlassCard>
+        <Text style={{ fontSize: 11, letterSpacing: 1.5, color: pal.w55, fontWeight: "600" }}>CURRENT MODE</Text>
+        <Text style={{ fontSize: 32, fontWeight: "700", color: pal.white }}>{mode}</Text>
+        <ProgressBar value={modeProgress[mode] ?? 0.5} color={pal.teal} />
+      </GlassCard>
+      {modes.map((item) => (
+        <SelectRow key={item.id} icon={item.icon} title={item.id} selected={mode === item.id} onPress={() => setMode(item.id)} />
+      ))}
+      <GlassButton
+        label="Save setting"
+        filled
+        onPress={() => {
+          updateSettings({ activeMode: mode });
+          navigation.goBack();
+        }}
+      />
+    </DarkScreen>
+  );
+}
+
+function FanSpeedSetting({ navigation }) {
+  const { settings, updateSettings } = useDeviceSettings();
+  const [speed, setSpeed] = useState(settings.fanSpeed);
+  const presets = [20, 40, 60, 80];
+
+  const adjust = (delta) => {
+    setSpeed((prev) => Math.min(100, Math.max(0, prev + delta)));
+  };
+
+  return (
+    <DarkScreen gradient={G_TEAL_OMBRE}>
+      <DarkHeader title="Fan Speed" subtitle="Fine tune airflow" navigation={navigation} />
+      <GlassCard style={{ alignItems: "center", gap: 16 }}>
+        <Text style={{ alignSelf: "flex-start", fontSize: 11, letterSpacing: 1.5, color: pal.w55, fontWeight: "600" }}>FAN SPEED</Text>
+        <View style={{ flexDirection: "row", alignItems: "center", gap: 20 }}>
+          <TouchableOpacity
+            onPress={() => adjust(-10)}
+            style={{ width: 44, height: 44, borderRadius: 22, backgroundColor: pal.glass, borderWidth: 1, borderColor: pal.glassBorder, alignItems: "center", justifyContent: "center" }}
+          >
+            <Text style={{ fontSize: 22, color: pal.white, fontWeight: "700" }}>−</Text>
+          </TouchableOpacity>
+          <Text style={{ fontSize: 44, fontWeight: "700", color: pal.white, minWidth: 120, textAlign: "center" }}>{speed}%</Text>
+          <TouchableOpacity
+            onPress={() => adjust(10)}
+            style={{ width: 44, height: 44, borderRadius: 22, backgroundColor: pal.glass, borderWidth: 1, borderColor: pal.glassBorder, alignItems: "center", justifyContent: "center" }}
+          >
+            <Text style={{ fontSize: 22, color: pal.white, fontWeight: "700" }}>+</Text>
+          </TouchableOpacity>
+        </View>
+        <ProgressBar value={speed / 100} color={pal.teal} />
+      </GlassCard>
+      {presets.map((preset) => (
+        <SelectRow key={preset} icon="fan" iconLib="mci" title={`${preset}% airflow`} selected={speed === preset} onPress={() => setSpeed(preset)} />
+      ))}
+      <GlassButton
+        label="Save setting"
+        filled
+        onPress={() => {
+          updateSettings({ fanSpeed: speed });
+          navigation.goBack();
+        }}
+      />
+    </DarkScreen>
+  );
+}
+
+function AromaCartridge({ navigation }) {
+  const { settings } = useDeviceSettings();
+
+  return (
+    <DarkScreen gradient={G_BURGUNDY}>
+      <DarkHeader title="Aroma" subtitle="Cartridge level" navigation={navigation} />
+      <GlassCard style={{ gap: 12 }}>
+        <Text style={{ fontSize: 11, letterSpacing: 1.5, color: pal.w55, fontWeight: "600" }}>AROMA LEFT</Text>
+        <Text style={{ fontSize: 52, fontWeight: "700", color: pal.white }}>{settings.aromaLevel}%</Text>
+        <ProgressBar value={settings.aromaLevel / 100} color={pal.burgundy} />
+        <Text style={{ fontSize: 12, color: pal.w55 }}>Cartridge remaining</Text>
+      </GlassCard>
+    </DarkScreen>
+  );
+}
+
+function TimerSetting({ navigation, route }) {
+  const { settings, updateSettings } = useDeviceSettings();
+  const { devices, activeRoom } = useRooms();
+  const { startTimer, getDeviceTimers } = useDeviceTimers();
+  const deviceId =
+    route?.params?.deviceId
+    ?? devices.find((item) => item.roomId === activeRoom.id)?.id
+    ?? devices.find((item) => item.status === "Active")?.id;
+  const { purifier } = getDeviceTimers(deviceId);
+  const purifierActive = purifier.secondsRemaining !== null && purifier.secondsRemaining > 0;
+  const [timer, setTimer] = useState(settings.timer);
+  const options = ["Off", "30 min", "1 hour", "2 hours", "4 hours"];
+
+  const handleStartTimer = () => {
+    if (!deviceId) return;
+    const total = shutOffLabelToSeconds(timer);
+    if (total) startTimer(deviceId, "purifier", total);
+  };
+
   return (
     <DarkScreen gradient={G_TERRACOTTA}>
-      <DarkHeader title="Devices" subtitle="Rooms and paired purifiers" navigation={navigation} />
-      <DarkRow icon="air-purifier" title="Living Room" value="Good" />
-      <DarkRow icon="air-purifier" title="Bedroom" value="Silent" />
-      <GlassButton label="Add new purifier" onPress={() => navigation.navigate("AddDevice")} filled />
+      <DarkHeader title="Timer" subtitle="Schedule auto shut-off" navigation={navigation} />
+      <GlassCard>
+        <Text style={{ fontSize: 11, letterSpacing: 1.5, color: pal.w55, fontWeight: "600" }}>PRESET</Text>
+        <Text style={{ fontSize: 32, fontWeight: "700", color: pal.white }}>{timer}</Text>
+        {purifierActive ? (
+          <Text style={{ fontSize: 14, color: pal.w55, marginTop: 8 }}>
+            Running · {formatDuration(purifier.secondsRemaining)}
+            {purifier.isPaused ? " · Paused" : ""}
+          </Text>
+        ) : null}
+      </GlassCard>
+      {options.map((option) => (
+        <SelectRow key={option} icon="timer-outline" title={option} selected={timer === option} onPress={() => setTimer(option)} />
+      ))}
+      {timer !== "Off" ? (
+        <GlassButton label="Start timer" filled color={pal.terracotta} onPress={handleStartTimer} />
+      ) : null}
+      <GlassButton
+        label="Save setting"
+        filled
+        color={pal.terracotta}
+        onPress={() => {
+          updateSettings({ timer });
+          navigation.goBack();
+        }}
+      />
+    </DarkScreen>
+  );
+}
+
+function DeviceFilterMaintenance({ navigation }) {
+  const { activeRoom, devices } = useRooms();
+  const { settings } = useDeviceSettings();
+  const device = devices.find((item) => item.roomId === activeRoom.id);
+  const subtitle = device ? `${device.roomName} Purifier` : `${activeRoom.name} Purifier`;
+
+  return (
+    <DarkScreen gradient={G_QUALITY}>
+      <DarkHeader title="Filter Maintenance" subtitle={subtitle} navigation={navigation} />
+      <GlassCard style={{ alignItems: "center", gap: 12, paddingVertical: 24 }}>
+        <Text style={{ fontSize: 48, fontWeight: "700", color: pal.white }}>{settings.hepaLife}%</Text>
+        <Text style={{ fontSize: 14, color: pal.w55, textAlign: "center" }}>HEPA H13 filter life remaining</Text>
+        <ProgressBar value={settings.hepaLife / 100} color={pal.teal} />
+      </GlassCard>
+      <DarkRow icon="air-filter" title="HEPA H13 Filter" value={`${settings.hepaLife}%`} />
+      <DarkRow icon="air-filter" title="Carbon Pre-filter" value={`${settings.carbonLife}%`} />
+      <DarkRow icon="lamp" title="UV-C Lamp" value={`${settings.uvLife}%`} />
+      <GlassButton label="Back to settings" onPress={() => navigation.navigate("DeviceSettings")} />
+    </DarkScreen>
+  );
+}
+
+function DeviceSettings({ navigation }) {
+  return (
+    <DarkScreen gradient={G_TERRACOTTA}>
+      <DarkHeader title="Settings" subtitle="Device preferences" navigation={navigation} />
+      <DarkRow icon="air-filter" title="Filter Maintenance" onPress={() => navigation.navigate("DeviceFilterMaintenance")} />
+      <DarkRow icon="bell-outline" title="Notifications" onPress={() => navigation.navigate("Notifications")} />
+      <DarkRow icon="download" title="Firmware Update" onPress={() => navigation.navigate("FirmwareAvailable")} />
+      <GlassButton label="Back to purifier" onPress={() => navigation.goBack()} />
+    </DarkScreen>
+  );
+}
+
+// ─── Device & Account Screens ─────────────────────────────────────────────────
+function DeviceManagement({ navigation }) {
+  const { devices } = useRooms();
+
+  return (
+    <DarkScreen gradient={G_TERRACOTTA}>
+      <DarkHeader title="Device Management" subtitle="Rooms and paired purifiers" navigation={navigation} />
+      {devices.length === 0 ? (
+        <GlassCard style={{ alignItems: "center", gap: 12, paddingVertical: 24 }}>
+          <PurifierIllustration size={100} />
+          <Text style={{ fontSize: 16, fontWeight: "700", color: pal.white }}>No purifiers yet</Text>
+          <Text style={{ fontSize: 13, color: pal.w55, textAlign: "center" }}>
+            Add a purifier and assign it to a room to see it here.
+          </Text>
+        </GlassCard>
+      ) : (
+        <View style={{ gap: 14 }}>
+          {devices.map((device) => (
+            <DeviceCard key={device.id} device={device} navigation={navigation} />
+          ))}
+        </View>
+      )}
+      <GlassButton label="Add Purifier" onPress={() => navigation.navigate("AddNewPurifier")} filled color={pal.terracotta} />
+      <MauveOmbreButton label="Go to Home" onPress={() => navigation.navigate("Dashboard")} />
+    </DarkScreen>
+  );
+}
+
+function AddCustomRoom({ navigation }) {
+  const { allRoomOptions, addCustomRoom } = useRooms();
+  const [roomName, setRoomName] = useState("");
+  const [error, setError] = useState("");
+
+  const handleSave = () => {
+    const trimmed = roomName.trim();
+    if (!trimmed) {
+      setError("Enter a room name");
+      return;
+    }
+    if (allRoomOptions.some((room) => room.name.toLowerCase() === trimmed.toLowerCase())) {
+      setError("This room already exists");
+      return;
+    }
+    addCustomRoom(trimmed);
+    navigation.goBack();
+  };
+
+  const selectPreset = (name) => {
+    setRoomName(name);
+    setError("");
+  };
+
+  return (
+    <DarkScreen gradient={G_WARM}>
+      <DarkHeader title="Custom Room" subtitle="Name your space" navigation={navigation} />
+      <Text style={{ color: pal.w70, fontSize: 14, lineHeight: 22 }}>
+        Create a custom room for your purifier.
+      </Text>
+      <GlassField
+        label="Room name"
+        value={roomName}
+        onChangeText={(text) => {
+          setRoomName(text);
+          setError("");
+        }}
+        placeholder="e.g. Home Office"
+        autoCapitalize="words"
+      />
+      {error ? <Text style={{ color: "#C84545", fontSize: 12 }}>{error}</Text> : null}
+      <GlassCard>
+        <Text style={{ color: pal.w55, fontSize: 11, letterSpacing: 2, textTransform: "uppercase" }}>Suggestions</Text>
+        <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8 }}>
+          {ROOM_PRESETS.map((preset) => {
+            const taken = allRoomOptions.some((room) => room.name.toLowerCase() === preset.toLowerCase());
+            const selected = roomName.toLowerCase() === preset.toLowerCase();
+            return (
+              <TouchableOpacity
+                key={preset}
+                activeOpacity={0.85}
+                disabled={taken}
+                onPress={() => selectPreset(preset)}
+                style={{
+                  paddingHorizontal: 14,
+                  paddingVertical: 10,
+                  borderRadius: 20,
+                  borderWidth: 1,
+                  opacity: taken ? 0.4 : 1,
+                  backgroundColor: selected ? `${pal.mauve}28` : pal.glass,
+                  borderColor: selected ? pal.mauve : pal.glassBorder,
+                }}
+              >
+                <Text style={{ color: selected ? pal.white : pal.w70, fontSize: 13, fontWeight: "600" }}>{preset}</Text>
+              </TouchableOpacity>
+            );
+          })}
+        </View>
+      </GlassCard>
+      <MauveOmbreButton label="Save room" onPress={handleSave} />
     </DarkScreen>
   );
 }
@@ -1654,14 +2735,36 @@ function FirmwareAvailable({ navigation }) {
 }
 
 function FirmwareUpdating({ navigation }) {
+  const [progress, setProgress] = useState(0);
+  const [complete, setComplete] = useState(false);
+
+  useEffect(() => {
+    const duration = 4000;
+    const interval = 40;
+    const steps = duration / interval;
+    let step = 0;
+    const timer = setInterval(() => {
+      step += 1;
+      const value = Math.min(step / steps, 1);
+      setProgress(value);
+      if (value >= 1) {
+        setComplete(true);
+        clearInterval(timer);
+      }
+    }, interval);
+    return () => clearInterval(timer);
+  }, []);
+
   return (
     <DarkScreen gradient={G_TERRACOTTA}>
       <DarkHeader title="Updating Firmware" subtitle="Do not unplug the purifier" navigation={navigation} />
       <View style={{ alignItems: "center", paddingVertical: 24 }}>
-        <CircleRing value={0.64} size={200} label="Installing v1.8.2" />
+        <CircleRing value={progress} size={200} label="Installing v1.8.2" />
       </View>
       <View style={{ flexGrow: 1, minHeight: 16 }} />
-      <GlassButton label="Finish demo" onPress={() => navigation.navigate("FirmwareComplete")} filled />
+      {complete ? (
+        <GlassButton label="Finish demo" onPress={() => navigation.navigate("FirmwareComplete")} filled />
+      ) : null}
     </DarkScreen>
   );
 }
@@ -1711,10 +2814,12 @@ function UserProfile({ navigation }) {
 const screens = {
   Welcome, Language, AuthChoice, SignIn, CreateAccount, VerifyEmail,
   CreatePassword, AccountCreated, ForgotPassword, ResetEmailSent,
-  PasswordResetSuccess, AddDevice, DeviceFound, WifiCredentials,
+  PasswordResetSuccess, Devices, AddNewPurifier, PlacePurifier, AddDevice, DeviceFound, WifiCredentials,
   PairingProgress, PairingSuccess, PairingError, Dashboard, FanControl,
   SleepMode, FilterMaintenance, ReplaceFilter, Analytics, Automation,
-  CustomAutomation, Settings, Aroma, DeviceManagement, Notifications,
+  CustomAutomation, Settings, Aroma, DeviceManagement, DeviceControl, ActiveMode,
+  FanSpeedSetting, AromaCartridge, TimerSetting, DeviceFilterMaintenance, DeviceSettings,
+  AddCustomRoom, Notifications,
   FirmwareAvailable, FirmwareUpdating, FirmwareComplete, UserProfile,
 };
 
@@ -1723,7 +2828,7 @@ function AppNavigator() {
     <NavigationContainer>
       <Stack.Navigator screenOptions={{ headerShown: false, animation: "slide_from_right" }}>
         {routes.map((name) => (
-          <Stack.Screen key={name} name={name} component={screens[name]} />
+          <Stack.Screen key={name} name={name} component={withHomeNav(screens[name], name)} />
         ))}
       </Stack.Navigator>
     </NavigationContainer>
@@ -1733,25 +2838,66 @@ function AppNavigator() {
 export default function App() {
   return (
     <LanguageProvider>
-      <AromaTimerProvider>
-        <AppNavigator />
-      </AromaTimerProvider>
+      <RoomsProvider>
+        <DeviceSettingsProvider>
+          <DeviceTimersProvider>
+            <AppNavigator />
+          </DeviceTimersProvider>
+        </DeviceSettingsProvider>
+      </RoomsProvider>
     </LanguageProvider>
   );
 }
 
 // ─── Dashboard-specific Styles ────────────────────────────────────────────────
 const s = StyleSheet.create({
-  dashContainer:  { flex: 1, alignItems: "center", justifyContent: "space-between", paddingHorizontal: 24, paddingTop: 24, paddingBottom: 38 },
-  dashTop:        { alignItems: "center", marginTop: 6 },
-  welcomeHome:    { fontSize: 34, color: CREAM, fontStyle: "italic", fontWeight: "300", letterSpacing: 0.5 },
-  aromaTimer:     { fontSize: 28, color: "rgba(221,215,193,0.82)", fontWeight: "200", letterSpacing: 4, marginTop: 10 },
-  dashRoom:       { fontSize: 12, color: "rgba(221,215,193,0.52)", marginTop: 8, letterSpacing: 2, textTransform: "uppercase" },
-  fanWrapper:     { flex: 1, alignItems: "center", justifyContent: "center", paddingBottom: 8 },
-  dashBottom:     { alignItems: "center", gap: 8, width: "100%" },
-  airClean:       { fontSize: 20, color: "rgba(221,215,193,0.88)", fontStyle: "italic", fontWeight: "300" },
-  dashMetrics:    { color: "rgba(221,215,193,0.42)", fontSize: 11, letterSpacing: 3 },
-  dashNavRow:     { flexDirection: "row", gap: 8, marginTop: 12, flexWrap: "wrap", justifyContent: "center" },
-  dashPill:       { paddingHorizontal: 18, paddingVertical: 9, borderRadius: 22, backgroundColor: "rgba(221,215,193,0.11)", borderWidth: 1, borderColor: "rgba(221,215,193,0.17)" },
-  dashPillText:   { color: "rgba(221,215,193,0.84)", fontSize: 13, fontWeight: "600" },
+  dashContainer:     { flex: 1, alignItems: "center", paddingHorizontal: 24, paddingBottom: 38 },
+  dashTopBar:        { width: "100%", alignItems: "center", justifyContent: "center", paddingTop: 32, paddingBottom: 8, paddingHorizontal: 44, minHeight: 56 },
+  dashSettingsBtn:   { position: "absolute", top: 8, right: 0, zIndex: 10, padding: 8 },
+  dashListBlock:     { flex: 1, width: "100%" },
+  welcomeHome:       { fontSize: 34, color: CREAM, fontStyle: "italic", fontWeight: "300", letterSpacing: 0.5 },
+  activeDeviceList:  { width: "100%", gap: 14 },
+  activeDeviceBlock: { width: "100%", gap: 6 },
+  deviceTimerRow:    { flexDirection: "row", flexWrap: "wrap", gap: 8, paddingHorizontal: 8 },
+  deviceTimerChip:   {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 999,
+    backgroundColor: "rgba(221,215,193,0.08)",
+    borderWidth: 1,
+    borderColor: "rgba(221,215,193,0.12)",
+  },
+  deviceTimerChipText: { color: "rgba(221,215,193,0.78)", fontSize: 12, fontWeight: "600", letterSpacing: 0.3 },
+  activeDeviceOval:  {
+    width: "100%",
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+    paddingHorizontal: 18,
+    paddingVertical: 12,
+    borderRadius: 999,
+    backgroundColor: "rgba(221,215,193,0.10)",
+    borderWidth: 1,
+    borderColor: "rgba(221,215,193,0.16)",
+  },
+  activeDeviceIcon:  {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "rgba(221,215,193,0.08)",
+  },
+  activeDeviceTitle: { color: CREAM, fontSize: 15, fontWeight: "700" },
+  activeDeviceMeta:  { color: "rgba(221,215,193,0.52)", fontSize: 11 },
+  activeDeviceBadge: {
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 999,
+    backgroundColor: "rgba(74,139,122,0.28)",
+  },
+  activeDeviceBadgeText: { color: pal.teal, fontSize: 10, fontWeight: "700", letterSpacing: 0.4 },
 });
