@@ -1,4 +1,4 @@
-import React, { useRef, useEffect, useState, createContext, useContext } from "react";
+import React, { useRef, useEffect, useState, createContext, useContext, useCallback } from "react";
 import { nextTelemetry, aqiInfo } from "./src/sim/telemetry";
 import {
   ScrollView,
@@ -15,6 +15,7 @@ import {
   Platform,
   PanResponder,
   AccessibilityInfo,
+  Alert,
 } from "react-native";
 import { NavigationContainer } from "@react-navigation/native";
 import { createNativeStackNavigator } from "@react-navigation/native-stack";
@@ -1686,7 +1687,15 @@ function DeviceCard({ device, navigation, compact = false }) {
       </TouchableOpacity>
       {!compact ? (
         <View style={{ paddingHorizontal: 16, paddingBottom: 16 }}>
-          <GlassButton label="Delete Device" onPress={() => removeDevice(device.id)} />
+          <GlassButton
+            label="Delete Device"
+            onPress={() =>
+              Alert.alert("Delete device?", `Remove the ${device.roomName} purifier from your account.`, [
+                { text: "Cancel", style: "cancel" },
+                { text: "Delete", style: "destructive", onPress: () => removeDevice(device.id) },
+              ])
+            }
+          />
         </View>
       ) : null}
     </View>
@@ -2356,6 +2365,7 @@ function FilterMaintenance({ navigation }) {
 
 function ReplaceFilter({ navigation }) {
   const { updateSettings } = useDeviceSettings();
+  const showToast = useToast();
   return (
     <DarkScreen gradient={G_TEAL}>
       <DarkHeader title="Replace Filter" subtitle="Guided workflow" navigation={navigation} />
@@ -2366,6 +2376,7 @@ function ReplaceFilter({ navigation }) {
         label="Filter replaced"
         onPress={() => {
           updateSettings({ hepaLife: 100, carbonLife: 100, uvLife: 100 });
+          showToast("Filter replaced");
           navigation.navigate("FilterMaintenance");
         }}
         filled
@@ -2505,6 +2516,7 @@ function Aroma({ navigation, route }) {
   const [selectedAroma, setSelectedAroma] = useState(settings.aromaScent ?? "Lavender");
   const [intensity, setIntensity] = useState(settings.aromaIntensity ?? 0.6);
   const [durationSeconds, setDurationSeconds] = useState(180);
+  const showToast = useToast();
 
   const handleTimerPress = () => {
     if (!deviceId) return;
@@ -2526,6 +2538,7 @@ function Aroma({ navigation, route }) {
 
   const handleSave = () => {
     updateSettings({ aromaScent: selectedAroma, aromaIntensity: intensity });
+    showToast("Aroma saved");
     navigation.goBack();
   };
 
@@ -2674,6 +2687,7 @@ function DeviceControl({ navigation, route }) {
 function ActiveMode({ navigation }) {
   const { settings, updateSettings } = useDeviceSettings();
   const [mode, setMode] = useState(settings.activeMode);
+  const showToast = useToast();
   const modes = [
     { id: "Sleep", icon: "moon" },
     { id: "Auto", icon: "sparkles" },
@@ -2697,6 +2711,7 @@ function ActiveMode({ navigation }) {
         filled
         onPress={() => {
           updateSettings({ activeMode: mode });
+          showToast("Mode saved");
           navigation.goBack();
         }}
       />
@@ -2707,6 +2722,7 @@ function ActiveMode({ navigation }) {
 function FanSpeedSetting({ navigation }) {
   const { settings, updateSettings } = useDeviceSettings();
   const [speed, setSpeed] = useState(settings.fanSpeed);
+  const showToast = useToast();
   const presets = [20, 40, 60, 80];
 
   const adjust = (delta) => {
@@ -2743,6 +2759,7 @@ function FanSpeedSetting({ navigation }) {
         filled
         onPress={() => {
           updateSettings({ fanSpeed: speed });
+          showToast("Fan speed saved");
           navigation.goBack();
         }}
       />
@@ -2778,6 +2795,7 @@ function TimerSetting({ navigation, route }) {
   const purifierActive = purifier.secondsRemaining !== null && purifier.secondsRemaining > 0;
   const [timer, setTimer] = useState(settings.timer);
   const [customSeconds, setCustomSeconds] = useState(0);
+  const showToast = useToast();
   const options = ["Off", "30 min", "1 hour", "2 hours", "4 hours"];
 
   const handleStartTimer = () => {
@@ -2823,6 +2841,7 @@ function TimerSetting({ navigation, route }) {
         color={pal.terracotta}
         onPress={() => {
           updateSettings({ timer });
+          showToast("Timer saved");
           navigation.goBack();
         }}
       />
@@ -3070,13 +3089,16 @@ function UserProfile({ navigation }) {
   const { settings, updateSettings } = useDeviceSettings();
   const [name, setName] = useState(settings.profileName);
   const [email, setEmail] = useState(settings.profileEmail);
+  const showToast = useToast();
   const initial = (settings.profileName || "U").trim().charAt(0).toUpperCase() || "U";
 
-  const handleSave = () =>
+  const handleSave = () => {
     updateSettings({
       profileName: name.trim() || settings.profileName,
       profileEmail: email.trim() || settings.profileEmail,
     });
+    showToast("Profile saved");
+  };
 
   return (
     <DarkScreen gradient={G_TERRACOTTA}>
@@ -3097,7 +3119,15 @@ function UserProfile({ navigation }) {
         onPress={() => navigation.navigate("Language", { fromSettings: true })}
       />
       <GlassButton label="Save changes" filled color={pal.terracotta} onPress={handleSave} />
-      <GlassButton label="Logout" onPress={() => navigation.navigate("SignIn")} />
+      <GlassButton
+        label="Logout"
+        onPress={() =>
+          Alert.alert("Log out?", "You'll need to sign in again.", [
+            { text: "Cancel", style: "cancel" },
+            { text: "Log out", style: "destructive", onPress: () => navigation.navigate("SignIn") },
+          ])
+        }
+      />
     </DarkScreen>
   );
 }
@@ -3448,13 +3478,49 @@ function AppNavigator() {
   );
 }
 
+const ToastContext = createContext(() => {});
+function useToast() {
+  return useContext(ToastContext);
+}
+
+function ToastProvider({ children }) {
+  const [msg, setMsg] = useState("");
+  const opacity = useRef(new Animated.Value(0)).current;
+  const timer = useRef(null);
+
+  const show = useCallback((text) => {
+    setMsg(text);
+    if (timer.current) clearTimeout(timer.current);
+    Animated.timing(opacity, { toValue: 1, duration: 180, useNativeDriver: true }).start();
+    timer.current = setTimeout(() => {
+      Animated.timing(opacity, { toValue: 0, duration: 220, useNativeDriver: true }).start();
+    }, 1600);
+  }, [opacity]);
+
+  useEffect(() => () => timer.current && clearTimeout(timer.current), []);
+
+  return (
+    <ToastContext.Provider value={show}>
+      {children}
+      <Animated.View pointerEvents="none" style={{ position: "absolute", bottom: 92, left: 0, right: 0, alignItems: "center", opacity }}>
+        <View style={{ flexDirection: "row", alignItems: "center", gap: 8, backgroundColor: "rgba(10,10,12,0.92)", paddingHorizontal: 16, paddingVertical: 10, borderRadius: 20, borderWidth: 1, borderColor: "rgba(255,255,255,0.14)" }}>
+          <Ionicons name="checkmark-circle" size={16} color={pal.teal} />
+          <Text style={{ color: "#fff", fontSize: 13, fontWeight: "600" }}>{msg}</Text>
+        </View>
+      </Animated.View>
+    </ToastContext.Provider>
+  );
+}
+
 function Providers({ children }) {
   return (
     <SafeAreaProvider>
       <LanguageProvider>
         <RoomsProvider>
           <DeviceSettingsProvider>
-            <DeviceTimersProvider>{children}</DeviceTimersProvider>
+            <DeviceTimersProvider>
+              <ToastProvider>{children}</ToastProvider>
+            </DeviceTimersProvider>
           </DeviceSettingsProvider>
         </RoomsProvider>
       </LanguageProvider>
