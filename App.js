@@ -3508,17 +3508,19 @@ function WatchApp() {
 
 function ModeSwitch({ mode, onChange }) {
   const opt = (m, label) => (
-    <TouchableOpacity onPress={() => onChange(m)} activeOpacity={0.85} style={{ paddingHorizontal: 16, paddingVertical: 8, borderRadius: 18, backgroundColor: mode === m ? pal.teal : "transparent" }}>
+    <TouchableOpacity onPress={() => onChange(m)} activeOpacity={0.85} accessibilityRole="button" accessibilityState={{ selected: mode === m }} style={{ paddingHorizontal: 18, paddingVertical: 7, borderRadius: 16, backgroundColor: mode === m ? pal.teal : "transparent" }}>
       <Text style={{ color: mode === m ? "#0B1A14" : "rgba(255,255,255,0.8)", fontWeight: "700", fontSize: 13 }}>{label}</Text>
     </TouchableOpacity>
   );
+  // Inline bar (not an overlay): it takes its own space at the top so it never
+  // covers the app. RootShell renders the app in the flex region below it.
   return (
-    <SafeAreaView pointerEvents="box-none" style={{ position: "absolute", left: 0, right: 0, top: 0, alignItems: "center" }}>
-      <View style={{ flexDirection: "row", marginTop: 8, padding: 4, borderRadius: 22, backgroundColor: "rgba(10,10,12,0.82)", borderWidth: 1, borderColor: "rgba(255,255,255,0.12)" }}>
+    <View style={{ alignItems: "center", paddingVertical: 8, backgroundColor: "#0E0E12", borderBottomWidth: 1, borderBottomColor: "rgba(255,255,255,0.06)" }}>
+      <View style={{ flexDirection: "row", padding: 4, borderRadius: 20, backgroundColor: "rgba(255,255,255,0.07)", borderWidth: 1, borderColor: "rgba(255,255,255,0.12)" }}>
         {opt("phone", "Phone")}
         {opt("watch", "Watch")}
       </View>
-    </SafeAreaView>
+    </View>
   );
 }
 
@@ -3586,11 +3588,15 @@ function Providers({ children }) {
 
 function RootShell() {
   const [mode, setMode] = useState("phone");
+  // Top safe-area bar holds the switch; the app fills the region below it.
+  // SafeAreaView(top) consumes the top inset so nested screens don't double it.
   return (
-    <View style={{ flex: 1 }}>
-      {mode === "watch" ? <WatchApp /> : <AppNavigator />}
+    <SafeAreaView edges={["top"]} style={{ flex: 1, backgroundColor: "#0E0E12" }}>
       <ModeSwitch mode={mode} onChange={setMode} />
-    </View>
+      <View style={{ flex: 1 }}>
+        {mode === "watch" ? <WatchApp /> : <AppNavigator />}
+      </View>
+    </SafeAreaView>
   );
 }
 
