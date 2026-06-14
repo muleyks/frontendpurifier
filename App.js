@@ -3345,33 +3345,57 @@ function WatchHub({ onOpen }) {
 }
 
 function WatchApp() {
-  const [view, setView] = useState("hub");
-  const current = WATCH_FACES.find((f) => f.key === view);
+  const [view, setView] = useState("home"); // "home" | "hub" | <faceKey>
+  const detail = view !== "home" && view !== "hub" ? WATCH_FACES.find((f) => f.key === view) : null;
 
-  // Swipe horizontally on a detail face to return to the hub.
-  const pan = useRef(
-    PanResponder.create({
-      onMoveShouldSetPanResponder: (_, g) => Math.abs(g.dx) > 14 && Math.abs(g.dx) > Math.abs(g.dy),
-      onPanResponderRelease: (_, g) => {
-        if (Math.abs(g.dx) > 45) setView("hub");
-      },
-    })
-  ).current;
+  // Home: swipe up → wheel.
+  const panUp = useRef(PanResponder.create({
+    onMoveShouldSetPanResponder: (_, g) => Math.abs(g.dy) > 14 && Math.abs(g.dy) > Math.abs(g.dx),
+    onPanResponderRelease: (_, g) => { if (g.dy < -40) setView("hub"); },
+  })).current;
+  // Wheel: swipe down → home.
+  const panDown = useRef(PanResponder.create({
+    onMoveShouldSetPanResponder: (_, g) => Math.abs(g.dy) > 14 && Math.abs(g.dy) > Math.abs(g.dx),
+    onPanResponderRelease: (_, g) => { if (g.dy > 40) setView("home"); },
+  })).current;
+  // Detail: swipe → back to wheel.
+  const panBack = useRef(PanResponder.create({
+    onMoveShouldSetPanResponder: (_, g) => Math.abs(g.dx) > 14 && Math.abs(g.dx) > Math.abs(g.dy),
+    onPanResponderRelease: (_, g) => { if (Math.abs(g.dx) > 45) setView("hub"); },
+  })).current;
+
+  let content;
+  let footer;
+  if (view === "home") {
+    content = (
+      <View style={{ flex: 1 }} {...panUp.panHandlers}>
+        <WatchHome />
+        <View pointerEvents="none" style={{ position: "absolute", bottom: 6, left: 0, right: 0, alignItems: "center" }}>
+          <Ionicons name="chevron-up" size={16} color="rgba(40,48,44,0.5)" />
+        </View>
+      </View>
+    );
+    footer = "Swipe up for controls";
+  } else if (view === "hub") {
+    content = (
+      <View style={{ flex: 1 }} {...panDown.panHandlers}>
+        <WatchHub onOpen={setView} />
+      </View>
+    );
+    footer = "Tap a bubble · swipe down for home";
+  } else {
+    content = (
+      <View style={{ flex: 1 }} {...panBack.panHandlers}>
+        <detail.Comp />
+      </View>
+    );
+    footer = `${detail.label} · swipe to go back`;
+  }
 
   return (
     <View style={{ flex: 1, backgroundColor: "#15161A", alignItems: "center", justifyContent: "center", gap: 16 }}>
-      <WatchFrame>
-        {!current ? (
-          <WatchHub onOpen={setView} />
-        ) : (
-          <View style={{ flex: 1 }} {...pan.panHandlers}>
-            <current.Comp />
-          </View>
-        )}
-      </WatchFrame>
-      <Text style={{ color: "rgba(255,255,255,0.45)", fontSize: 12 }}>
-        {current ? `${current.label} · swipe to go back` : "Vestel · tap a bubble"}
-      </Text>
+      <WatchFrame>{content}</WatchFrame>
+      <Text style={{ color: "rgba(255,255,255,0.45)", fontSize: 12 }}>{footer}</Text>
     </View>
   );
 }
