@@ -1,5 +1,6 @@
 import React, { useRef, useEffect, useState, createContext, useContext, useCallback } from "react";
 import { nextTelemetry, aqiInfo } from "./src/sim/telemetry";
+import { isValidEmail, isValidOtp } from "./src/lib/validation";
 import {
   ScrollView,
   StyleSheet,
@@ -30,8 +31,6 @@ const { width, height } = Dimensions.get("window");
 // ─── Palette (from design images) ────────────────────────────────────────────
 const CREAM = "#DDD7C1";
 const CREAM_RGB = "221,215,193";
-const FAN_CREAM_RGB = CREAM_RGB;
-const FAN_HUB = CREAM;
 
 const pal = {
   teal:        "#4A8B7A",
@@ -58,10 +57,6 @@ const G_WARM     = ["#7A6E50", "#3C2E18", "#160E04"];
 const G_BURGUNDY = ["#8B2535", "#4D1020", "#1A0508"];
 // G_NEUTRAL: Settings, Firmware, Pairing — dark neutral
 const G_NEUTRAL  = ["#303830", "#161E18", "#060908"];
-// G_PURPLE: Optional accent
-const G_PURPLE   = ["#5C3870", "#2E1840", "#120A1C"];
-// G_AUTH: AuthChoice — teal → mauve → deep purple
-const G_AUTH     = [pal.teal, pal.mauve, "#743058"];
 // G_MAUVE: Dashboard Welcome Home — soft mauve depth
 const G_MAUVE    = ["#C4A8A8", pal.mauve, "#3D2838"];
 // G_QUALITY: Air Quality & Filter — terracotta → teal → dusty mauve
@@ -426,39 +421,6 @@ function PulseGlowInviteCard({ children, ringId = "Invite", variant = "tealTerra
           {ringBody}
         </View>
       )}
-    </View>
-  );
-}
-
-function SoftTerracottaOmbreButton({ label, onPress }) {
-  return (
-    <View style={{ width: "100%" }}>
-      <LinearGradient
-        colors={["rgba(22,14,4,0)", "rgba(176,130,110,0.08)", "rgba(176,130,110,0.22)"]}
-        locations={[0, 0.5, 1]}
-        start={{ x: 0.5, y: 1 }}
-        end={{ x: 0.5, y: 0 }}
-        style={{ borderRadius: 26, paddingTop: 14, paddingBottom: 2, paddingHorizontal: 2 }}
-      >
-        <TouchableOpacity activeOpacity={0.9} onPress={onPress}>
-          <LinearGradient
-            colors={["rgba(60,46,24,0.12)", "rgba(168,125,104,0.38)", "#A87D68", CREAM]}
-            locations={[0, 0.4, 0.72, 1]}
-            start={{ x: 0.5, y: 1 }}
-            end={{ x: 0.5, y: 0 }}
-            style={{ borderRadius: 22, padding: 2 }}
-          >
-            <LinearGradient
-              colors={["#7A5E52", "#A87D68", CREAM]}
-              start={{ x: 0.5, y: 1 }}
-              end={{ x: 0.5, y: 0 }}
-              style={{ height: 50, borderRadius: 20, alignItems: "center", justifyContent: "center" }}
-            >
-              <Text style={{ color: CREAM, fontWeight: "600", fontSize: 15, letterSpacing: 0.4 }}>{label}</Text>
-            </LinearGradient>
-          </LinearGradient>
-        </TouchableOpacity>
-      </LinearGradient>
     </View>
   );
 }
@@ -1276,11 +1238,13 @@ function SignIn({ navigation }) {
   const [rememberMe, setRememberMe] = useState(true);
   const [email, setEmail] = useState("mesud@example.com");
   const [password, setPassword] = useState("Vestel1234");
+  const [emailErr, setEmailErr] = useState(false);
 
   return (
     <DarkScreen gradient={G_WARM}>
       <DarkHeader title="Login" subtitle="Demo account — credentials pre-filled" navigation={navigation} onBack={() => navigation.navigate("AuthChoice")} />
-      <GlassField label="Email" value={email} onChangeText={setEmail} placeholder="Your email" keyboardType="email-address" />
+      <GlassField label="Email" value={email} onChangeText={(t) => { setEmail(t); setEmailErr(false); }} placeholder="Your email" keyboardType="email-address" />
+      {emailErr ? <Text style={{ color: "#F0A88C", fontSize: 12, marginTop: -8 }}>Enter a valid email address</Text> : null}
       <GlassField label="Password" value={password} onChangeText={setPassword} placeholder="Password" secure />
       <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
         <Toggle
@@ -1293,7 +1257,7 @@ function SignIn({ navigation }) {
           <Text style={{ color: pal.khaki, fontWeight: "700", fontSize: 12 }}>Forgot password?</Text>
         </TouchableOpacity>
       </View>
-      <MauveOmbreButton label="Log In" onPress={() => navigation.navigate("Devices")} />
+      <MauveOmbreButton label="Log In" onPress={() => (isValidEmail(email) ? navigation.navigate("Devices") : setEmailErr(true))} />
       <Text style={{ textAlign: "center", color: pal.w30, fontSize: 12 }}>or</Text>
       <GlassButton label="Continue with Google" onPress={() => navigation.navigate("Devices")} />
     </DarkScreen>
@@ -1302,6 +1266,7 @@ function SignIn({ navigation }) {
 
 function CreateAccount({ navigation }) {
   const [email, setEmail] = useState("");
+  const [emailErr, setEmailErr] = useState(false);
 
   return (
     <DarkScreen gradient={G_WARM}>
@@ -1309,8 +1274,9 @@ function CreateAccount({ navigation }) {
       <Text style={{ color: pal.khaki, fontSize: 13, fontWeight: "600", letterSpacing: 2, textAlign: "center", marginVertical: 8 }}>
         VESTEL AIR PURIFIER
       </Text>
-      <GlassField label="Email" value={email} onChangeText={setEmail} placeholder="Your email" keyboardType="email-address" />
-      <MauveOmbreButton label="Create an account" onPress={() => navigation.navigate("VerifyEmail")} />
+      <GlassField label="Email" value={email} onChangeText={(t) => { setEmail(t); setEmailErr(false); }} placeholder="Your email" keyboardType="email-address" />
+      {emailErr ? <Text style={{ color: "#F0A88C", fontSize: 12, marginTop: -8 }}>Enter a valid email address</Text> : null}
+      <MauveOmbreButton label="Create an account" onPress={() => (isValidEmail(email) ? navigation.navigate("VerifyEmail") : setEmailErr(true))} />
       <Text style={{ textAlign: "center", color: pal.w30, fontSize: 12 }}>or</Text>
       <GlassButton label="Continue with Google" onPress={() => navigation.navigate("VerifyEmail")} />
       <View style={{ flexGrow: 1, minHeight: 18 }} />
@@ -1323,6 +1289,7 @@ function CreateAccount({ navigation }) {
 
 function VerifyEmail({ navigation }) {
   const [code, setCode] = useState(["", "", "", "", "", ""]);
+  const [codeErr, setCodeErr] = useState(false);
   const codeRefs = useRef([]);
 
   const handleCodeChange = (text, index) => {
@@ -1363,7 +1330,8 @@ function VerifyEmail({ navigation }) {
           );
         })}
       </View>
-      <MauveOmbreButton label="Verify Email" onPress={() => navigation.navigate("CreatePassword")} />
+      {codeErr ? <Text style={{ color: "#F0A88C", fontSize: 12, textAlign: "center" }}>Enter the full 6-digit code</Text> : null}
+      <MauveOmbreButton label="Verify Email" onPress={() => (isValidOtp(code) ? navigation.navigate("CreatePassword") : setCodeErr(true))} />
       <GlassButton label="Send to different email" onPress={() => navigation.goBack()} />
     </DarkScreen>
   );
