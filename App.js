@@ -2796,23 +2796,29 @@ function TimerSetting({ navigation, route }) {
       {options.map((option) => (
         <SelectRow key={option} icon="timer-outline" title={option} selected={timer === option} onPress={() => selectPreset(option)} />
       ))}
-      <GlassCard style={{ alignItems: "center", gap: 14 }}>
-        <Text style={{ color: pal.w55, fontSize: 11, letterSpacing: 2, textTransform: "uppercase" }}>Shut-off clock</Text>
+      <GlassCard style={{ alignItems: "center", gap: 12 }}>
+        <Text style={{ color: pal.w55, fontSize: 11, letterSpacing: 2, textTransform: "uppercase" }}>Shut-off timer</Text>
         <Text style={{ color: pal.w30, fontSize: 11 }}>Tap a preset or type minutes : seconds</Text>
         {purifierActive ? (
           <Text style={{ color: pal.white, fontSize: 52, fontWeight: "200", letterSpacing: 3 }}>{formatDuration(purifier.secondsRemaining)}</Text>
         ) : (
           <TimeBoxes key={seed.key} initialSeconds={seed.seconds} onChange={setDurationSeconds} />
         )}
-        <View style={{ alignSelf: "stretch" }}>
-          {purifierActive ? (
-            <GlassButton label="Stop timer" filled color={pal.terracotta} onPress={handleStop} />
-          ) : (
-            <GlassButton label="Start timer" filled color={pal.terracotta} onPress={handleStart} disabled={durationSeconds <= 0} />
-          )}
-        </View>
+        <TouchableOpacity
+          activeOpacity={0.85}
+          onPress={purifierActive ? handleStop : handleStart}
+          disabled={!purifierActive && durationSeconds <= 0}
+          accessibilityRole="button"
+          accessibilityLabel={purifierActive ? "Stop timer" : "Start timer"}
+          style={[
+            { width: 52, height: 52, borderRadius: 26, backgroundColor: pal.glass, borderWidth: 1, borderColor: pal.glassBorder, alignItems: "center", justifyContent: "center" },
+            !purifierActive && durationSeconds <= 0 && { opacity: 0.4 },
+          ]}
+        >
+          <Ionicons name={purifierActive ? "stop" : "play"} size={22} color={pal.white} />
+        </TouchableOpacity>
         <Text style={{ color: pal.w30, fontSize: 11 }}>
-          {purifierActive ? "Counting down to shut-off…" : durationSeconds > 0 ? "Ready to start" : "Set a duration to start"}
+          {purifierActive ? "Counting down to shut-off…" : durationSeconds > 0 ? "Tap to start countdown" : "Set a duration to start"}
         </Text>
       </GlassCard>
       <GlassButton
