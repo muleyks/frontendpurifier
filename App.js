@@ -1,5 +1,5 @@
 import React, { useRef, useEffect, useState, createContext, useContext } from "react";
-import { nextTelemetry } from "./src/sim/telemetry";
+import { nextTelemetry, aqiInfo } from "./src/sim/telemetry";
 import {
   ScrollView,
   StyleSheet,
@@ -3064,6 +3064,188 @@ const screens = {
   FirmwareAvailable, FirmwareUpdating, FirmwareComplete, UserProfile,
 };
 
+// ─── Watch Prototype (in-app Apple-Watch faces; shares the phone's state) ──────
+const WATCH_W = 198;
+const WATCH_H = 240;
+
+const watchStyles = StyleSheet.create({
+  round: { width: 40, height: 40, borderRadius: 20, backgroundColor: "rgba(255,255,255,0.14)", alignItems: "center", justifyContent: "center", borderWidth: 1, borderColor: "rgba(255,255,255,0.2)" },
+  roundTxt: { color: "#fff", fontSize: 22, fontWeight: "700" },
+});
+
+function WatchFrame({ children }) {
+  return (
+    <View style={{ width: WATCH_W + 26, height: WATCH_H + 30, borderRadius: 60, backgroundColor: "#0B0B0D", borderWidth: 2, borderColor: "#2C2C30", alignItems: "center", justifyContent: "center" }}>
+      <View style={{ width: WATCH_W, height: WATCH_H, borderRadius: 46, overflow: "hidden", backgroundColor: "#000" }}>
+        {children}
+      </View>
+      <View style={{ position: "absolute", right: -3, top: WATCH_H * 0.34, width: 7, height: 34, borderRadius: 4, backgroundColor: "#3A3A3E" }} />
+    </View>
+  );
+}
+
+function WatchFace({ gradient, children }) {
+  return (
+    <LinearGradient colors={gradient} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={{ width: WATCH_W, height: WATCH_H }}>
+      <View style={{ flex: 1, paddingHorizontal: 14, paddingVertical: 16, justifyContent: "center", gap: 6 }}>{children}</View>
+    </LinearGradient>
+  );
+}
+
+function WatchHome() {
+  const { settings } = useDeviceSettings();
+  const { activeRoom } = useRooms();
+  const info = aqiInfo(settings.aqi);
+  return (
+    <WatchFace gradient={["#E2DCC6", "#A9C2B5", "#4A8B7A"]}>
+      <Text style={{ color: "#28302C", fontSize: 17, fontWeight: "700", fontStyle: "italic", textAlign: "center" }}>Welcome Home</Text>
+      <Text style={{ color: "#3C463F", fontSize: 11, textAlign: "center" }}>{activeRoom?.name ?? "Living Room"}</Text>
+      <View style={{ alignItems: "center", marginVertical: 2 }}>
+        <FanSpiral size={92} bladeColors={[info.color, info.color, info.color]} centerColor="#FFFFFF" />
+      </View>
+      <Text style={{ color: info.color, fontSize: 13, fontWeight: "800", textAlign: "center" }}>
+        {info.key === "good" ? "Air is clean" : `The air quality is ${info.label.toLowerCase()}`}
+      </Text>
+      <Text style={{ color: "#3C463F", fontSize: 10, textAlign: "center" }}>PM2.5 {settings.pm25}  |  TVOC {settings.tvoc}</Text>
+    </WatchFace>
+  );
+}
+
+function WatchAirQuality() {
+  const { settings } = useDeviceSettings();
+  const info = aqiInfo(settings.aqi);
+  return (
+    <WatchFace gradient={["#2E5E63", "#39395F", "#241636"]}>
+      <Text style={{ color: pal.w70, fontSize: 11, fontWeight: "700", textAlign: "center", letterSpacing: 1 }}>AIR QUALITY</Text>
+      <Text style={{ color: pal.white, fontSize: 40, fontWeight: "800", textAlign: "center" }}>{settings.aqi}</Text>
+      <Text style={{ color: info.color, fontSize: 13, fontWeight: "700", textAlign: "center" }}>{settings.aqiLabel}</Text>
+      <Svg width={WATCH_W - 36} height={40} viewBox="0 0 160 40" style={{ alignSelf: "center", marginTop: 4 }}>
+        <Path d="M2 30 C 20 10, 40 26, 60 16 S 100 28, 120 12 S 150 22, 158 8" fill="none" stroke="rgba(221,215,193,0.8)" strokeWidth={2} strokeLinecap="round" />
+      </Svg>
+      <Text style={{ color: pal.w55, fontSize: 10, textAlign: "center" }}>PM2.5 {settings.pm25} · TVOC {settings.tvoc}</Text>
+    </WatchFace>
+  );
+}
+
+function WatchFan() {
+  const { settings, updateSettings } = useDeviceSettings();
+  const deg = Math.min(5, Math.max(1, Math.round(settings.fanSpeed / 20) || 1));
+  const setDeg = (d) => updateSettings({ fanSpeed: Math.min(100, Math.max(20, d * 20)) });
+  return (
+    <WatchFace gradient={["#4AACA9", "#39395F", "#241636"]}>
+      <Text style={{ color: pal.w70, fontSize: 11, fontWeight: "700", textAlign: "center", letterSpacing: 1 }}>FAN DEGREE</Text>
+      <View style={{ alignItems: "center" }}><FanSpiral size={66} bladeColors={[pal.white, pal.white, pal.white]} centerColor="#FFFFFF" /></View>
+      <Text style={{ color: pal.white, fontSize: 30, fontWeight: "800", textAlign: "center" }}>{deg}</Text>
+      <View style={{ flexDirection: "row", justifyContent: "center", gap: 20 }}>
+        <TouchableOpacity onPress={() => setDeg(deg - 1)} style={watchStyles.round}><Text style={watchStyles.roundTxt}>−</Text></TouchableOpacity>
+        <TouchableOpacity onPress={() => setDeg(deg + 1)} style={watchStyles.round}><Text style={watchStyles.roundTxt}>+</Text></TouchableOpacity>
+      </View>
+    </WatchFace>
+  );
+}
+
+function WatchAroma() {
+  const { settings, updateSettings } = useDeviceSettings();
+  const scents = ["Mint", "Lavender", "Eucalyptus"];
+  return (
+    <WatchFace gradient={["#8B2535", "#4D1020", "#1A0508"]}>
+      <Text style={{ color: pal.w70, fontSize: 11, fontWeight: "700", textAlign: "center", letterSpacing: 1 }}>AROMA</Text>
+      <MaterialCommunityIcons name="flower" size={32} color="#E8C9C9" style={{ alignSelf: "center" }} />
+      <Text style={{ color: "#F0DADA", fontSize: 18, fontWeight: "800", textAlign: "center" }}>{settings.aromaScent}</Text>
+      <View style={{ flexDirection: "row", justifyContent: "center", gap: 6, flexWrap: "wrap" }}>
+        {scents.map((sc) => (
+          <TouchableOpacity key={sc} onPress={() => updateSettings({ aromaScent: sc })} style={{ paddingHorizontal: 8, paddingVertical: 4, borderRadius: 12, borderWidth: 1, borderColor: sc === settings.aromaScent ? "#E8C9C9" : "rgba(255,255,255,0.22)" }}>
+            <Text style={{ color: pal.white, fontSize: 10 }}>{sc}</Text>
+          </TouchableOpacity>
+        ))}
+      </View>
+      <Text style={{ color: pal.w55, fontSize: 10, textAlign: "center" }}>{settings.aromaLevel}% cartridge left</Text>
+    </WatchFace>
+  );
+}
+
+function WatchFilter() {
+  const { settings } = useDeviceSettings();
+  return (
+    <WatchFace gradient={["#2E5E63", "#39395F", "#241636"]}>
+      <View style={{ alignItems: "center" }}>
+        <CircleRing value={settings.hepaLife / 100} size={134} color={pal.khaki} label="HEPA filter" />
+      </View>
+    </WatchFace>
+  );
+}
+
+function WatchSettings() {
+  const { settings, updateSettings } = useDeviceSettings();
+  const onCount = Object.values(settings.notifications).filter(Boolean).length;
+  const row = (label, value, onPress) => (
+    <TouchableOpacity onPress={onPress} activeOpacity={0.8} style={{ flexDirection: "row", alignItems: "center", borderRadius: 12, backgroundColor: "rgba(0,0,0,0.24)", paddingHorizontal: 12, paddingVertical: 9 }}>
+      <Text style={{ color: "#fff", fontSize: 12, fontWeight: "600", flex: 1 }}>{label}</Text>
+      {value ? <Text style={{ color: "rgba(255,255,255,0.7)", fontSize: 11 }}>{value}</Text> : null}
+    </TouchableOpacity>
+  );
+  return (
+    <WatchFace gradient={["#E2DCC6", "#A9C2B5", "#4A8B7A"]}>
+      {row("Display", settings.ledOn ? "On" : "Off", () => updateSettings({ ledOn: !settings.ledOn }))}
+      {row("Notifications", `${onCount}/4`, () => {})}
+      {row("Device Info", "VHT-402", () => {})}
+    </WatchFace>
+  );
+}
+
+const WATCH_FACES = [
+  { key: "home", label: "Home", Comp: WatchHome },
+  { key: "air", label: "Air Quality", Comp: WatchAirQuality },
+  { key: "fan", label: "Fan", Comp: WatchFan },
+  { key: "aroma", label: "Aroma", Comp: WatchAroma },
+  { key: "filter", label: "Filter", Comp: WatchFilter },
+  { key: "settings", label: "Settings", Comp: WatchSettings },
+];
+
+function WatchApp() {
+  const [page, setPage] = useState(0);
+  return (
+    <View style={{ flex: 1, backgroundColor: "#15161A", alignItems: "center", justifyContent: "center", gap: 16 }}>
+      <WatchFrame>
+        <ScrollView
+          horizontal
+          pagingEnabled
+          showsHorizontalScrollIndicator={false}
+          onMomentumScrollEnd={(e) => setPage(Math.round(e.nativeEvent.contentOffset.x / WATCH_W))}
+        >
+          {WATCH_FACES.map(({ key, Comp }) => (
+            <View key={key} style={{ width: WATCH_W, height: WATCH_H }}>
+              <Comp />
+            </View>
+          ))}
+        </ScrollView>
+      </WatchFrame>
+      <View style={{ flexDirection: "row", gap: 6 }}>
+        {WATCH_FACES.map((f, i) => (
+          <View key={f.key} style={{ width: 7, height: 7, borderRadius: 4, backgroundColor: i === page ? pal.teal : "rgba(255,255,255,0.25)" }} />
+        ))}
+      </View>
+      <Text style={{ color: "rgba(255,255,255,0.45)", fontSize: 12 }}>{WATCH_FACES[page]?.label} · swipe to explore</Text>
+    </View>
+  );
+}
+
+function ModeSwitch({ mode, onChange }) {
+  const opt = (m, label) => (
+    <TouchableOpacity onPress={() => onChange(m)} activeOpacity={0.85} style={{ paddingHorizontal: 16, paddingVertical: 8, borderRadius: 18, backgroundColor: mode === m ? pal.teal : "transparent" }}>
+      <Text style={{ color: mode === m ? "#0B1A14" : "rgba(255,255,255,0.8)", fontWeight: "700", fontSize: 13 }}>{label}</Text>
+    </TouchableOpacity>
+  );
+  return (
+    <SafeAreaView pointerEvents="box-none" style={{ position: "absolute", left: 0, right: 0, bottom: 0, alignItems: "center" }}>
+      <View style={{ flexDirection: "row", marginBottom: 14, padding: 4, borderRadius: 22, backgroundColor: "rgba(10,10,12,0.82)", borderWidth: 1, borderColor: "rgba(255,255,255,0.12)" }}>
+        {opt("phone", "Phone")}
+        {opt("watch", "Watch")}
+      </View>
+    </SafeAreaView>
+  );
+}
+
 function AppNavigator() {
   return (
     <NavigationContainer>
@@ -3076,19 +3258,44 @@ function AppNavigator() {
   );
 }
 
-export default function App() {
+function Providers({ children }) {
   return (
     <SafeAreaProvider>
       <LanguageProvider>
         <RoomsProvider>
           <DeviceSettingsProvider>
-            <DeviceTimersProvider>
-              <AppNavigator />
-            </DeviceTimersProvider>
+            <DeviceTimersProvider>{children}</DeviceTimersProvider>
           </DeviceSettingsProvider>
         </RoomsProvider>
       </LanguageProvider>
     </SafeAreaProvider>
+  );
+}
+
+function RootShell() {
+  const [mode, setMode] = useState("phone");
+  return (
+    <View style={{ flex: 1 }}>
+      {mode === "watch" ? <WatchApp /> : <AppNavigator />}
+      <ModeSwitch mode={mode} onChange={setMode} />
+    </View>
+  );
+}
+
+export default function App() {
+  return (
+    <Providers>
+      <RootShell />
+    </Providers>
+  );
+}
+
+// Exposed for tests / side-by-side previews.
+export function WatchPreview() {
+  return (
+    <Providers>
+      <WatchApp />
+    </Providers>
   );
 }
 
