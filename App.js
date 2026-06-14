@@ -1,6 +1,6 @@
 import React, { useRef, useEffect, useState, createContext, useContext } from "react";
+import { nextTelemetry } from "./src/sim/telemetry";
 import {
-  SafeAreaView,
   ScrollView,
   StyleSheet,
   Text,
@@ -11,12 +11,15 @@ import {
   Dimensions,
   Animated,
   Easing,
+  KeyboardAvoidingView,
+  Platform,
 } from "react-native";
 import { NavigationContainer } from "@react-navigation/native";
 import { createNativeStackNavigator } from "@react-navigation/native-stack";
 import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
 import Svg, { Circle, Path, G, Defs, RadialGradient, Stop, Ellipse } from "react-native-svg";
 import { LinearGradient } from "expo-linear-gradient";
+import { SafeAreaView, SafeAreaProvider } from "react-native-safe-area-context";
 
 const Stack = createNativeStackNavigator();
 const { width, height } = Dimensions.get("window");
@@ -35,10 +38,10 @@ const pal = {
   terracotta:  "#C87050",
   burgundy:    "#8B2535",
   white:       CREAM,
-  w88:         `rgba(${CREAM_RGB},0.88)`,
-  w70:         `rgba(${CREAM_RGB},0.70)`,
-  w55:         `rgba(${CREAM_RGB},0.55)`,
-  w30:         `rgba(${CREAM_RGB},0.30)`,
+  w88:         `rgba(${CREAM_RGB},0.92)`,
+  w70:         `rgba(${CREAM_RGB},0.82)`,
+  w55:         `rgba(${CREAM_RGB},0.68)`,
+  w30:         `rgba(${CREAM_RGB},0.48)`,
   glass:       `rgba(${CREAM_RGB},0.10)`,
   glassBorder: `rgba(${CREAM_RGB},0.16)`,
 };
@@ -162,16 +165,18 @@ function withHomeNav(ScreenComponent, routeName) {
 function DarkScreen({ children, gradient = G_NEUTRAL, padded = true, scroll = true }) {
   const isQuality = gradient === G_QUALITY || gradient === G_TERRACOTTA;
   const inner = scroll ? (
-    <ScrollView
-      contentContainerStyle={[
-        { gap: 14, paddingBottom: 32 },
-        padded && { paddingHorizontal: 22, paddingTop: 20 },
-      ]}
-      showsVerticalScrollIndicator={false}
-      keyboardShouldPersistTaps="handled"
-    >
-      {children}
-    </ScrollView>
+    <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : "height"} style={{ flex: 1 }}>
+      <ScrollView
+        contentContainerStyle={[
+          { gap: 14, paddingBottom: 32 },
+          padded && { paddingHorizontal: 22, paddingTop: 20 },
+        ]}
+        showsVerticalScrollIndicator={false}
+        keyboardShouldPersistTaps="handled"
+      >
+        {children}
+      </ScrollView>
+    </KeyboardAvoidingView>
   ) : (
     <View style={[{ flex: 1 }, padded && { paddingHorizontal: 22, paddingTop: 20 }]}>
       {children}
@@ -193,13 +198,13 @@ function DarkScreen({ children, gradient = G_NEUTRAL, padded = true, scroll = tr
   );
 }
 
-function DarkHeader({ title, subtitle, navigation }) {
+function DarkHeader({ title, subtitle, navigation, onBack }) {
   return (
     <View style={{ flexDirection: "row", alignItems: "center", gap: 12, marginBottom: 4 }}>
       {navigation && (
         <TouchableOpacity
           style={{ width: 36, height: 36, borderRadius: 18, backgroundColor: pal.glass, alignItems: "center", justifyContent: "center", borderWidth: 1, borderColor: pal.glassBorder }}
-          onPress={() => navigation.goBack()}
+          onPress={onBack || (() => navigation.goBack())}
         >
           <Ionicons name="chevron-back" size={18} color={pal.w88} />
         </TouchableOpacity>
@@ -482,10 +487,11 @@ function TealTerracottaOmbreCard({ children, style }) {
 
 function GlassField({ label, value = "", onChangeText, placeholder, secure, keyboardType, autoCapitalize = "none", editable }) {
   const canEdit = editable ?? onChangeText != null;
+  const [focused, setFocused] = useState(false);
   return (
     <View style={{ gap: 6 }}>
-      {label ? <Text style={{ color: pal.w55, fontSize: 12, fontWeight: "600" }}>{label}</Text> : null}
-      <View style={{ height: 50, borderRadius: 14, borderWidth: 1, borderColor: pal.glassBorder, backgroundColor: pal.glass, paddingHorizontal: 14, justifyContent: "center" }}>
+      {label ? <Text style={{ color: pal.w70, fontSize: 12, fontWeight: "600" }}>{label}</Text> : null}
+      <View style={{ height: 50, borderRadius: 14, borderWidth: focused ? 1.5 : 1, borderColor: focused ? pal.khaki : pal.glassBorder, backgroundColor: pal.glass, paddingHorizontal: 14, justifyContent: "center" }}>
         <TextInput
           value={value}
           onChangeText={onChangeText}
@@ -495,10 +501,74 @@ function GlassField({ label, value = "", onChangeText, placeholder, secure, keyb
           keyboardType={keyboardType}
           autoCapitalize={autoCapitalize}
           autoCorrect={false}
-          style={{ color: pal.w88, fontSize: 14, padding: 0 }}
-          placeholderTextColor={pal.w30}
+          onFocus={() => setFocused(true)}
+          onBlur={() => setFocused(false)}
+          style={{ color: pal.w88, fontSize: 15, padding: 0 }}
+          placeholderTextColor={pal.w55}
         />
       </View>
+    </View>
+  );
+}
+
+function secondsToBuffer(total) {
+  const t = Math.max(0, Math.floor(total || 0));
+  const mm = Math.min(99, Math.floor(t / 60));
+  const ss = t % 60;
+  return (String(mm).padStart(2, "0") + String(ss).padStart(2, "0")).replace(/^0+(?=\d)/, "");
+}
+
+function bufferToSeconds(raw) {
+  const padded = raw.padStart(4, "0").slice(-4);
+  const mm = parseInt(padded.slice(0, 2), 10) || 0;
+  const ss = parseInt(padded.slice(2), 10) || 0;
+  return mm * 60 + ss;
+}
+
+// Segmented MM:SS entry with industry "shift-from-the-right" typing (like a
+// timer app): each new digit pushes in from the right, backspace pops it off.
+// Same look as the verification-code boxes.
+function TimeBoxes({ initialSeconds = 0, onChange }) {
+  const inputRef = useRef(null);
+  const [focused, setFocused] = useState(false);
+  const [raw, setRaw] = useState(() => secondsToBuffer(initialSeconds));
+
+  const update = (text) => {
+    const next = text.replace(/[^0-9]/g, "").replace(/^0+(?=\d)/, "").slice(-4);
+    setRaw(next);
+    onChange?.(bufferToSeconds(next));
+  };
+
+  const padded = raw.padStart(4, "0").slice(-4);
+
+  const renderBox = (i) => {
+    const entered = i >= 4 - raw.length;
+    return (
+      <View key={i} style={{ width: 48, height: 60, borderRadius: 12, borderWidth: focused ? 1.5 : 1, borderColor: focused ? pal.khaki : pal.glassBorder, backgroundColor: pal.glass, alignItems: "center", justifyContent: "center" }}>
+        <Text style={{ color: entered ? pal.white : pal.w30, fontSize: 28, fontWeight: "700" }}>{padded[i]}</Text>
+      </View>
+    );
+  };
+
+  return (
+    <View style={{ alignItems: "center" }}>
+      <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+        {renderBox(0)}
+        {renderBox(1)}
+        <Text style={{ color: pal.w70, fontSize: 30, fontWeight: "700" }}>:</Text>
+        {renderBox(2)}
+        {renderBox(3)}
+      </View>
+      <TextInput
+        ref={inputRef}
+        value={raw}
+        onChangeText={update}
+        onFocus={() => setFocused(true)}
+        onBlur={() => setFocused(false)}
+        keyboardType="number-pad"
+        caretHidden
+        style={{ position: "absolute", top: 0, left: 0, right: 0, bottom: 0, opacity: 0, textAlign: "center" }}
+      />
     </View>
   );
 }
@@ -515,6 +585,16 @@ function DarkRow({ icon, title, value, onPress, danger }) {
       {value ? <Text style={{ color: pal.w55, fontSize: 12 }}>{value}</Text> : null}
       <Ionicons name="chevron-forward" size={15} color={pal.w30} />
     </TouchableOpacity>
+  );
+}
+
+function StatusRow({ icon, title, value, danger }) {
+  return (
+    <View style={{ minHeight: 60, borderRadius: 16, borderWidth: 1, borderColor: pal.glassBorder, backgroundColor: pal.glass, paddingHorizontal: 14, flexDirection: "row", alignItems: "center", gap: 12 }}>
+      <MaterialCommunityIcons name={icon} size={20} color={danger ? "#C84545" : pal.teal} />
+      <Text style={{ flex: 1, fontSize: 14, color: pal.w88, fontWeight: "600" }}>{title}</Text>
+      {value ? <Text style={{ color: pal.w55, fontSize: 12, fontWeight: "600" }}>{value}</Text> : null}
+    </View>
   );
 }
 
@@ -944,26 +1024,50 @@ function CircleRing({ value = 0.78, size = 220, color = pal.teal, label = "", te
   );
 }
 
-function WeekChart() {
-  const points = [[10, 52], [58, 28], [110, 32], [166, 46], [216, 22], [270, 38], [310, 16]];
-  const d = `M ${points.map((p) => p.join(" ")).join(" L ")}`;
+const CHART_DATA = {
+  Day: {
+    labels: ["6", "9", "12", "15", "18", "21", "24"],
+    points: [[10, 40], [58, 30], [110, 48], [166, 26], [216, 52], [270, 34], [310, 20]],
+    trend: "Improving",
+    delta: "-8%",
+  },
+  Week: {
+    labels: ["T", "W", "T", "F", "S", "S", "M"],
+    points: [[10, 52], [58, 28], [110, 32], [166, 46], [216, 22], [270, 38], [310, 16]],
+    trend: "Steady",
+    delta: "+12%",
+  },
+  Month: {
+    labels: ["W1", "W2", "W3", "W4", "W5", "W6", "W7"],
+    points: [[10, 30], [58, 44], [110, 24], [166, 50], [216, 34], [270, 42], [310, 28]],
+    trend: "Variable",
+    delta: "+5%",
+  },
+};
+
+function WeekChart({ range = "Week", onFilterStatus }) {
+  const data = CHART_DATA[range] || CHART_DATA.Week;
+  const d = `M ${data.points.map((p) => p.join(" ")).join(" L ")}`;
   return (
     <GlassCard>
-      <Text style={{ color: pal.w55, fontSize: 11, letterSpacing: 2.5, textAlign: "center" }}>
-        T{"   "}W{"   "}T{"   "}F{"   "}S{"   "}S{"   "}M
-      </Text>
+      <Text style={{ color: pal.w70, fontSize: 12, fontWeight: "700" }}>AQI trend · lower is cleaner</Text>
+      <View style={{ flexDirection: "row", justifyContent: "space-between", paddingHorizontal: 6 }}>
+        {data.labels.map((label, i) => (
+          <Text key={i} style={{ color: pal.w55, fontSize: 11, letterSpacing: 1 }}>{label}</Text>
+        ))}
+      </View>
       <Svg width="100%" height={72} viewBox="0 0 320 72">
         <Path d={d} fill="none" stroke="rgba(221,215,193,0.75)" strokeWidth={2.5} strokeLinecap="round" strokeLinejoin="round" />
-        {points.map(([x, y], i) => (
+        {data.points.map(([x, y], i) => (
           <Circle key={i} cx={x} cy={y} r={3.5} fill="rgba(221,215,193,0.90)" />
         ))}
       </Svg>
       <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
         <View>
-          <Text style={{ color: pal.white, fontSize: 22, fontWeight: "700" }}>Steady</Text>
-          <Text style={{ color: pal.teal, fontSize: 12, fontWeight: "600" }}>+12%</Text>
+          <Text style={{ color: pal.white, fontSize: 22, fontWeight: "700" }}>{data.trend}</Text>
+          <Text style={{ color: pal.teal, fontSize: 12, fontWeight: "600" }}>{data.delta}</Text>
         </View>
-        <TouchableOpacity style={{ flexDirection: "row", alignItems: "center", gap: 6, backgroundColor: pal.glass, paddingHorizontal: 14, paddingVertical: 8, borderRadius: 20, borderWidth: 1, borderColor: pal.glassBorder }}>
+        <TouchableOpacity activeOpacity={0.8} onPress={onFilterStatus} style={{ flexDirection: "row", alignItems: "center", gap: 6, backgroundColor: pal.glass, paddingHorizontal: 14, paddingVertical: 8, borderRadius: 20, borderWidth: 1, borderColor: pal.glassBorder }}>
           <MaterialCommunityIcons name="air-filter" size={14} color={pal.w70} />
           <Text style={{ color: pal.w70, fontSize: 12, fontWeight: "600" }}>Filter status</Text>
         </TouchableOpacity>
@@ -1154,13 +1258,13 @@ function AuthChoice({ navigation }) {
 }
 
 function SignIn({ navigation }) {
-  const [rememberMe, setRememberMe] = useState(false);
-  const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
+  const [rememberMe, setRememberMe] = useState(true);
+  const [email, setEmail] = useState("mesud@example.com");
+  const [password, setPassword] = useState("Vestel1234");
 
   return (
     <DarkScreen gradient={G_WARM}>
-      <DarkHeader title="Login" subtitle="Enter your credentials" navigation={navigation} />
+      <DarkHeader title="Login" subtitle="Demo account — credentials pre-filled" navigation={navigation} onBack={() => navigation.navigate("AuthChoice")} />
       <GlassField label="Email" value={email} onChangeText={setEmail} placeholder="Your email" keyboardType="email-address" />
       <GlassField label="Password" value={password} onChangeText={setPassword} placeholder="Password" secure />
       <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
@@ -1186,7 +1290,7 @@ function CreateAccount({ navigation }) {
 
   return (
     <DarkScreen gradient={G_WARM}>
-      <DarkHeader title="Create Account" subtitle="Enter your email to sign up" navigation={navigation} />
+      <DarkHeader title="Create Account" subtitle="Enter your email to sign up" navigation={navigation} onBack={() => navigation.navigate("AuthChoice")} />
       <Text style={{ color: pal.khaki, fontSize: 13, fontWeight: "600", letterSpacing: 2, textAlign: "center", marginVertical: 8 }}>
         VESTEL AIR PURIFIER
       </Text>
@@ -1223,18 +1327,26 @@ function VerifyEmail({ navigation }) {
         Enter the 6-digit code sent to your email
       </Text>
       <View style={{ flexDirection: "row", gap: 8, justifyContent: "space-between" }}>
-        {code.map((digit, i) => (
-          <View key={i} style={{ width: (width - 44 - 40) / 6, height: 52, borderRadius: 12, borderWidth: 1, borderColor: pal.glassBorder, backgroundColor: pal.glass, alignItems: "center", justifyContent: "center" }}>
-            <TextInput
-              ref={(ref) => { codeRefs.current[i] = ref; }}
-              value={digit}
-              onChangeText={(text) => handleCodeChange(text, i)}
-              keyboardType="number-pad"
-              maxLength={1}
-              style={{ color: pal.white, fontSize: 18, fontWeight: "700", textAlign: "center", width: "100%", height: "100%" }}
-            />
-          </View>
-        ))}
+        {code.map((digit, i) => {
+          const active = i === code.findIndex((d) => d === "");
+          const highlight = digit !== "" || active;
+          return (
+            <View key={i} style={{ width: (width - 44 - 40) / 6, height: 52, borderRadius: 12, borderWidth: highlight ? 1.5 : 1, borderColor: highlight ? pal.khaki : pal.glassBorder, backgroundColor: pal.glass, alignItems: "center", justifyContent: "center" }}>
+              <TextInput
+                ref={(ref) => { codeRefs.current[i] = ref; }}
+                value={digit}
+                onChangeText={(text) => handleCodeChange(text, i)}
+                onFocus={() => {
+                  const target = code.findIndex((d) => d === "");
+                  if (target !== -1 && i > target) codeRefs.current[target]?.focus();
+                }}
+                keyboardType="number-pad"
+                maxLength={1}
+                style={{ color: pal.white, fontSize: 20, fontWeight: "700", textAlign: "center", width: "100%", height: "100%" }}
+              />
+            </View>
+          );
+        })}
       </View>
       <MauveOmbreButton label="Verify Email" onPress={() => navigation.navigate("CreatePassword")} />
       <GlassButton label="Send to different email" onPress={() => navigation.goBack()} />
@@ -1326,15 +1438,47 @@ function ForgotPassword({ navigation }) {
 }
 
 function ResetEmailSent({ navigation }) {
+  const [code, setCode] = useState(["", "", "", "", "", ""]);
+  const codeRefs = useRef([]);
+
+  const handleCodeChange = (text, index) => {
+    const digit = text.replace(/[^0-9]/g, "").slice(-1);
+    const next = [...code];
+    next[index] = digit;
+    setCode(next);
+    if (digit && index < 5) codeRefs.current[index + 1]?.focus();
+  };
+
   return (
     <DarkScreen gradient={G_WARM}>
       <SuccessMark icon="mail" ombre="tealMauve" />
       <Text style={{ fontSize: 24, fontWeight: "800", color: pal.white, textAlign: "center" }}>Check your inbox</Text>
       <Text style={{ fontSize: 13, color: pal.w55, textAlign: "center" }}>
-        A reset link was sent to mesud@example.com
+        Enter the 6-digit code sent to mesud@example.com
       </Text>
-      <DarkRow icon="email-outline" title="mesud@example.com" value="Sent" />
-      <MauveOmbreButton label="Open email app" onPress={() => navigation.navigate("PasswordResetSuccess")} />
+      <View style={{ flexDirection: "row", gap: 8, justifyContent: "space-between" }}>
+        {code.map((digit, i) => {
+          const active = i === code.findIndex((d) => d === "");
+          const highlight = digit !== "" || active;
+          return (
+            <View key={i} style={{ width: (width - 44 - 40) / 6, height: 52, borderRadius: 12, borderWidth: highlight ? 1.5 : 1, borderColor: highlight ? pal.khaki : pal.glassBorder, backgroundColor: pal.glass, alignItems: "center", justifyContent: "center" }}>
+              <TextInput
+                ref={(ref) => { codeRefs.current[i] = ref; }}
+                value={digit}
+                onChangeText={(text) => handleCodeChange(text, i)}
+                onFocus={() => {
+                  const target = code.findIndex((d) => d === "");
+                  if (target !== -1 && i > target) codeRefs.current[target]?.focus();
+                }}
+                keyboardType="number-pad"
+                maxLength={1}
+                style={{ color: pal.white, fontSize: 20, fontWeight: "700", textAlign: "center", width: "100%", height: "100%" }}
+              />
+            </View>
+          );
+        })}
+      </View>
+      <MauveOmbreButton label="Verify code" onPress={() => navigation.navigate("PasswordResetSuccess")} />
       <GlassButton label="Back to sign in" onPress={() => navigation.navigate("SignIn")} />
     </DarkScreen>
   );
@@ -1495,7 +1639,7 @@ function PlacePurifier({ navigation }) {
 }
 
 function DeviceCard({ device, navigation, compact = false }) {
-  const { activeRoomId, setActiveRoomId, removeDevice, disconnectDevice, connectDevice } = useRooms();
+  const { activeRoomId, setActiveRoomId, removeDevice } = useRooms();
   const isActive = device.roomId === activeRoomId && device.status !== "Disconnected";
 
   return (
@@ -1527,9 +1671,7 @@ function DeviceCard({ device, navigation, compact = false }) {
         {!compact ? <Ionicons name="chevron-forward" size={18} color={pal.w30} /> : null}
       </TouchableOpacity>
       {!compact ? (
-        <View style={{ paddingHorizontal: 16, paddingBottom: 16, gap: 10 }}>
-          <GlassButton label="Connect Device" filled color={pal.teal} onPress={() => connectDevice(device.id)} />
-          <GlassButton label="Disconnect Device" onPress={() => disconnectDevice(device.id)} />
+        <View style={{ paddingHorizontal: 16, paddingBottom: 16 }}>
           <GlassButton label="Delete Device" onPress={() => removeDevice(device.id)} />
         </View>
       ) : null}
@@ -1775,6 +1917,16 @@ function DeviceTimersProvider({ children }) {
     });
   };
 
+  const resetTimer = (deviceId, type) => {
+    setTimers((current) => {
+      const base = ensureDeviceTimers(current, deviceId);
+      return {
+        ...base,
+        [deviceId]: { ...base[deviceId], [type]: emptyTimerSlot() },
+      };
+    });
+  };
+
   const getDeviceTimers = (deviceId) => {
     const device = timers[deviceId];
     if (!device) return { aroma: emptyTimerSlot(), purifier: emptyTimerSlot() };
@@ -1782,7 +1934,7 @@ function DeviceTimersProvider({ children }) {
   };
 
   return (
-    <DeviceTimersContext.Provider value={{ startTimer, pauseTimer, resumeTimer, getDeviceTimers }}>
+    <DeviceTimersContext.Provider value={{ startTimer, pauseTimer, resumeTimer, resetTimer, getDeviceTimers }}>
       {children}
     </DeviceTimersContext.Provider>
   );
@@ -1905,6 +2057,12 @@ function useRooms() {
 }
 
 // ─── Device Settings (shared) ─────────────────────────────────────────────────
+const DEFAULT_AUTOMATIONS = [
+  { id: "allergy", name: "Allergy preset", on: true },
+  { id: "pet", name: "Pet preset", on: false },
+  { id: "night", name: "Night preset", on: true },
+];
+
 const DEFAULT_DEVICE_SETTINGS = {
   activeMode: "Sleep",
   fanSpeed: 40,
@@ -1913,9 +2071,25 @@ const DEFAULT_DEVICE_SETTINGS = {
   aqi: 42,
   aqiLabel: "Good",
   pm25: 8,
-  hepaLife: 100,
-  carbonLife: 100,
-  uvLife: 100,
+  tvoc: 85,
+  hepaLife: 78,
+  carbonLife: 41,
+  uvLife: 16,
+  sleepEnabled: true,
+  ledOn: false,
+  autoActivation: true,
+  sleepSchedule: "22:30 – 07:00",
+  automations: DEFAULT_AUTOMATIONS,
+  aromaScent: "Lavender",
+  aromaIntensity: 0.6,
+  profileName: "Mesud Guluyev",
+  profileEmail: "mesud@example.com",
+  notifications: {
+    "Filter replacement reminder": true,
+    "Poor air quality alert": true,
+    "Device offline alert": true,
+    "Firmware update available": true,
+  },
 };
 
 const DeviceSettingsContext = createContext(null);
@@ -1926,6 +2100,18 @@ function DeviceSettingsProvider({ children }) {
   const updateSettings = (patch) => {
     setSettings((prev) => ({ ...prev, ...patch }));
   };
+
+  // Live air-quality simulation: AQI/PM2.5/TVOC drift over time and are cleaned
+  // faster at higher fan speed. Screens reading settings.aqi/pm25 update live.
+  useEffect(() => {
+    const id = setInterval(() => {
+      setSettings((prev) => {
+        const next = nextTelemetry({ aqi: prev.aqi }, { fanSpeed: prev.fanSpeed });
+        return { ...prev, aqi: next.aqi, aqiLabel: next.aqiLabel, pm25: next.pm25, tvoc: next.tvoc };
+      });
+    }, 3000);
+    return () => clearInterval(id);
+  }, []);
 
   return (
     <DeviceSettingsContext.Provider value={{ settings, updateSettings }}>
@@ -2034,7 +2220,8 @@ function Dashboard({ navigation }) {
 }
 
 function FanControl({ navigation }) {
-  const [fanDegree, setFanDegree] = useState(2);
+  const { settings, updateSettings } = useDeviceSettings();
+  const fanDegree = Math.min(5, Math.max(1, Math.round(settings.fanSpeed / 20) || 1));
 
   return (
     <LinearGradient colors={G_MAUVE} style={{ flex: 1 }} start={{ x: 0.2, y: 0 }} end={{ x: 0.8, y: 1 }}>
@@ -2054,7 +2241,7 @@ function FanControl({ navigation }) {
                   <TouchableOpacity
                     key={deg}
                     activeOpacity={0.85}
-                    onPress={() => setFanDegree(deg)}
+                    onPress={() => updateSettings({ fanSpeed: deg * 20 })}
                     style={[
                       { width: 48, height: 48, borderRadius: 24, alignItems: "center", justifyContent: "center", borderWidth: 1 },
                       selected
@@ -2075,65 +2262,102 @@ function FanControl({ navigation }) {
   );
 }
 
+function ToggleRow({ icon, title, on, onPress }) {
+  return (
+    <View style={{ minHeight: 60, borderRadius: 16, borderWidth: 1, borderColor: pal.glassBorder, backgroundColor: pal.glass, paddingHorizontal: 14, flexDirection: "row", alignItems: "center", gap: 12 }}>
+      <MaterialCommunityIcons name={icon} size={20} color={pal.teal} />
+      <Text style={{ flex: 1, fontSize: 14, color: pal.w88, fontWeight: "600" }}>{title}</Text>
+      <Toggle on={on} onPress={onPress} />
+    </View>
+  );
+}
+
 function SleepMode({ navigation }) {
+  const { settings, updateSettings } = useDeviceSettings();
   return (
     <DarkScreen gradient={G_TEAL}>
       <DarkHeader title="Sleep Mode" subtitle="Silent bedroom routine" navigation={navigation} />
       <GlassCard style={{ alignItems: "center", gap: 8 }}>
         <Text style={{ color: pal.w55, fontSize: 11, letterSpacing: 2, textTransform: "uppercase" }}>Noise Level</Text>
         <Text style={{ color: pal.white, fontSize: 44, fontWeight: "300" }}>
-          22 <Text style={{ fontSize: 20, color: pal.w55 }}>dB</Text>
+          {settings.sleepEnabled ? "22" : "38"} <Text style={{ fontSize: 20, color: pal.w55 }}>dB</Text>
         </Text>
-        <ProgressBar value={0.3} />
+        <ProgressBar value={settings.sleepEnabled ? 0.3 : 0.6} />
       </GlassCard>
-      <DarkRow icon="calendar-night" title="Every night" value="22:30 – 07:00" />
-      <DarkRow icon="brightness-6" title="LED brightness" value="Off" />
-      <DarkRow icon="auto-fix" title="Auto activation" value="On" />
+      <ToggleRow icon="power-sleep" title="Sleep mode" on={settings.sleepEnabled} onPress={() => updateSettings({ sleepEnabled: !settings.sleepEnabled })} />
+      <DarkRow icon="calendar-night" title="Schedule" value={settings.sleepSchedule} />
+      <ToggleRow icon="brightness-6" title="LED brightness" on={settings.ledOn} onPress={() => updateSettings({ ledOn: !settings.ledOn })} />
+      <ToggleRow icon="auto-fix" title="Auto activation" on={settings.autoActivation} onPress={() => updateSettings({ autoActivation: !settings.autoActivation })} />
     </DarkScreen>
   );
 }
 
 function FilterMaintenance({ navigation }) {
+  const { settings } = useDeviceSettings();
   return (
     <DarkScreen gradient={G_QUALITY}>
       <DarkHeader title="Filter Life" subtitle="HEPA H13 status" navigation={navigation} />
       <View style={{ alignItems: "center", paddingVertical: 16 }}>
-        <CircleRing value={0.78} size={210} label="HEPA filter" color={pal.teal} />
+        <CircleRing value={settings.hepaLife / 100} size={210} label="HEPA filter" color={pal.teal} />
       </View>
-      <DarkRow icon="air-filter" title="HEPA H13 Filter" value="78%" />
-      <DarkRow icon="air-filter" title="Carbon Pre-filter" value="41%" />
-      <DarkRow icon="lamp" title="UV-C Lamp" value="16%" danger />
+      <StatusRow icon="air-filter" title="HEPA H13 Filter" value={`${settings.hepaLife}%`} />
+      <StatusRow icon="air-filter" title="Carbon Pre-filter" value={`${settings.carbonLife}%`} />
+      <StatusRow icon="lamp" title="UV-C Lamp" value={`${settings.uvLife}%`} danger />
       <GlassButton label="Replace filter" onPress={() => navigation.navigate("ReplaceFilter")} filled />
     </DarkScreen>
   );
 }
 
 function ReplaceFilter({ navigation }) {
+  const { updateSettings } = useDeviceSettings();
   return (
     <DarkScreen gradient={G_TEAL}>
       <DarkHeader title="Replace Filter" subtitle="Guided workflow" navigation={navigation} />
       {["Turn purifier off", "Remove old filter", "Install new filter"].map((x, i) => (
         <DarkRow key={x} icon={`numeric-${i + 1}-circle`} title={`${i + 1}. ${x}`} value="" />
       ))}
-      <GlassButton label="Filter replaced" onPress={() => navigation.navigate("FilterMaintenance")} filled />
+      <GlassButton
+        label="Filter replaced"
+        onPress={() => {
+          updateSettings({ hepaLife: 100, carbonLife: 100, uvLife: 100 });
+          navigation.navigate("FilterMaintenance");
+        }}
+        filled
+      />
     </DarkScreen>
   );
 }
 
+const ANALYTICS_STATS = {
+  Day: { best: "6", avg: "14", peak: "39" },
+  Week: { best: "5", avg: "12", peak: "48" },
+  Month: { best: "4", avg: "18", peak: "63" },
+};
+
 function Analytics({ navigation }) {
+  const [range, setRange] = useState("Week");
+  const stats = ANALYTICS_STATS[range];
   return (
     <DarkScreen gradient={G_QUALITY}>
-      <DarkHeader title="Air Quality" subtitle="Weekly overview" navigation={navigation} />
+      <DarkHeader title="Air Quality" subtitle={`${range} overview`} navigation={navigation} />
       <View style={{ flexDirection: "row", height: 38, borderRadius: 14, backgroundColor: pal.glass, borderWidth: 1, borderColor: pal.glassBorder, padding: 4 }}>
-        {["Day", "Week", "Month"].map((t, i) => (
-          <View key={t} style={[{ flex: 1, alignItems: "center", justifyContent: "center", borderRadius: 10 }, i === 1 && { backgroundColor: pal.teal }]}>
-            <Text style={[{ fontSize: 13, fontWeight: "700" }, i === 1 ? { color: pal.white } : { color: pal.w55 }]}>{t}</Text>
-          </View>
-        ))}
+        {["Day", "Week", "Month"].map((t) => {
+          const selected = range === t;
+          return (
+            <TouchableOpacity
+              key={t}
+              activeOpacity={0.85}
+              onPress={() => setRange(t)}
+              style={[{ flex: 1, alignItems: "center", justifyContent: "center", borderRadius: 10 }, selected && { backgroundColor: pal.teal }]}
+            >
+              <Text style={[{ fontSize: 13, fontWeight: "700" }, selected ? { color: pal.white } : { color: pal.w55 }]}>{t}</Text>
+            </TouchableOpacity>
+          );
+        })}
       </View>
-      <WeekChart />
+      <WeekChart range={range} onFilterStatus={() => navigation.navigate("FilterMaintenance")} />
       <View style={{ flexDirection: "row", gap: 10 }}>
-        {[["leaf", "5", "Best"], ["chart-line", "12", "Avg"], ["alert", "48", "Peak"]].map(([icon, value, label]) => (
+        {[["leaf", stats.best, "Best"], ["chart-line", stats.avg, "Avg"], ["alert", stats.peak, "Peak"]].map(([icon, value, label]) => (
           <View key={label} style={{ flex: 1, minHeight: 88, borderRadius: 18, borderWidth: 1, borderColor: pal.glassBorder, backgroundColor: pal.glass, alignItems: "center", justifyContent: "center", gap: 4, padding: 10 }}>
             <MaterialCommunityIcons name={icon} size={20} color={pal.teal} />
             <Text style={{ fontSize: 20, fontWeight: "800", color: pal.white }}>{value}</Text>
@@ -2145,42 +2369,63 @@ function Analytics({ navigation }) {
   );
 }
 
+const AUTOMATION_ICONS = { allergy: "flower-pollen", pet: "paw", night: "weather-night" };
+
 function Automation({ navigation }) {
+  const { settings, updateSettings } = useDeviceSettings();
+  const toggle = (id) =>
+    updateSettings({ automations: settings.automations.map((a) => (a.id === id ? { ...a, on: !a.on } : a)) });
   return (
     <DarkScreen gradient={G_TEAL}>
       <DarkHeader title="Automation" subtitle="Scenario presets" navigation={navigation} />
-      <DarkRow icon="flower-pollen" title="Allergy preset" value="On" />
-      <DarkRow icon="paw" title="Pet preset" value="Off" />
-      <DarkRow icon="weather-night" title="Night preset" value="On" />
+      {settings.automations.map((a) => (
+        <ToggleRow key={a.id} icon={AUTOMATION_ICONS[a.id] || "robot"} title={a.name} on={a.on} onPress={() => toggle(a.id)} />
+      ))}
       <GlassButton label="Create rule" onPress={() => navigation.navigate("CustomAutomation")} filled />
     </DarkScreen>
   );
 }
 
+const TRIGGER_OPTIONS = ["PM2.5 above 35", "PM2.5 above 50", "AQI above 100", "Pollen high"];
+const CONDITION_OPTIONS = ["18:00 – 23:00", "All day", "Night only", "Weekends"];
+const ACTION_OPTIONS = ["Allergy Mode", "Boost fan", "Sleep Mode", "Turbo"];
+
 function CustomAutomation({ navigation }) {
+  const { settings, updateSettings } = useDeviceSettings();
   const [ruleName, setRuleName] = useState("");
+  const [trigger, setTrigger] = useState(0);
+  const [condition, setCondition] = useState(0);
+  const [action, setAction] = useState(0);
+
+  const handleSave = () => {
+    const name = ruleName.trim() || ACTION_OPTIONS[action];
+    updateSettings({ automations: [...settings.automations, { id: `rule-${Date.now()}`, name, on: true }] });
+    navigation.navigate("Automation");
+  };
 
   return (
     <DarkScreen gradient={G_TEAL}>
       <DarkHeader title="Custom Rule" subtitle="Trigger-based action" navigation={navigation} />
-      <GlassField label="Rule name" value={ruleName} onChangeText={setRuleName} placeholder="Rule name" />
-      <DarkRow icon="target" title="Trigger" value="PM2.5 above 35" />
-      <DarkRow icon="clock-outline" title="Condition" value="18:00 – 23:00" />
-      <DarkRow icon="auto-fix" title="Action" value="Allergy Mode" />
-      <GlassButton label="Save automation" onPress={() => navigation.navigate("Automation")} filled />
+      <GlassField label="Rule name" value={ruleName} onChangeText={setRuleName} placeholder="e.g. Evening allergy care" />
+      <SelectRow icon="target" title={`Trigger · ${TRIGGER_OPTIONS[trigger]}`} onPress={() => setTrigger((i) => (i + 1) % TRIGGER_OPTIONS.length)} />
+      <SelectRow icon="clock-outline" title={`Condition · ${CONDITION_OPTIONS[condition]}`} onPress={() => setCondition((i) => (i + 1) % CONDITION_OPTIONS.length)} />
+      <SelectRow icon="auto-fix" title={`Action · ${ACTION_OPTIONS[action]}`} onPress={() => setAction((i) => (i + 1) % ACTION_OPTIONS.length)} />
+      <Text style={{ color: pal.w30, fontSize: 11, textAlign: "center" }}>Tap a row to change it</Text>
+      <GlassButton label="Save automation" onPress={handleSave} filled />
     </DarkScreen>
   );
 }
 
 // ─── Settings & Aroma ─────────────────────────────────────────────────────────
 function Settings({ navigation }) {
+  const { settings, updateSettings } = useDeviceSettings();
   return (
     <DarkScreen gradient={G_QUALITY}>
       <View style={{ paddingTop: 8, paddingBottom: 6 }}>
         <Text style={{ color: pal.white, fontSize: 28, fontWeight: "700" }}>Settings</Text>
         <Text style={{ color: pal.w55, fontSize: 13, marginTop: 4 }}>App and device preferences</Text>
       </View>
-      <DarkRow icon="brightness-6" title="Display" onPress={() => {}} />
+      <DarkRow icon="brightness-6" title="Display" value={settings.ledOn ? "LED on" : "LED off"} onPress={() => updateSettings({ ledOn: !settings.ledOn })} />
       <DarkRow icon="bell-outline" title="Notifications" onPress={() => navigation.navigate("Notifications")} />
       <DarkRow icon="information-outline" title="Device Management" onPress={() => navigation.navigate("DeviceManagement")} />
       <View style={{ height: 8 }} />
@@ -2191,13 +2436,14 @@ function Settings({ navigation }) {
 }
 
 function Aroma({ navigation, route }) {
-  const { settings } = useDeviceSettings();
+  const { settings, updateSettings } = useDeviceSettings();
   const { devices, activeRoom } = useRooms();
-  const { startTimer, pauseTimer, resumeTimer, getDeviceTimers } = useDeviceTimers();
+  const { startTimer, pauseTimer, resumeTimer, resetTimer, getDeviceTimers } = useDeviceTimers();
   const deviceId =
     route?.params?.deviceId
     ?? devices.find((item) => item.roomId === activeRoom.id)?.id
-    ?? devices.find((item) => item.status === "Active")?.id;
+    ?? devices.find((item) => item.status === "Active")?.id
+    ?? devices[0]?.id;
   const { aroma: aromaTimer } = getDeviceTimers(deviceId);
   const { secondsRemaining, isRunning, isPaused } = aromaTimer;
   const aromas = [
@@ -2210,50 +2456,14 @@ function Aroma({ navigation, route }) {
     { label: "Medium", iconSize: 20, val: 0.6 },
     { label: "Most", iconSize: 26, val: 1.0 },
   ];
-  const [selectedAroma, setSelectedAroma] = useState("Lavender");
-  const [intensity, setIntensity] = useState(0.6);
-  const [durationInput, setDurationInput] = useState("03:00");
-
-  const parseDurationInput = (text) => {
-    const parts = (text || "00:00").split(":");
-    let minutes = parseInt(parts[0], 10) || 0;
-    let seconds = parseInt(parts[1], 10) || 0;
-    minutes = Math.min(60, Math.max(0, minutes));
-    if (minutes === 60) seconds = 0;
-    else seconds = Math.min(59, Math.max(0, seconds));
-    return minutes * 60 + seconds;
-  };
-
-  const handleCounterInput = (text) => {
-    const digits = text.replace(/[^0-9]/g, "").slice(0, 4);
-    if (!digits) {
-      setDurationInput("");
-      return;
-    }
-    let minutes;
-    let seconds;
-    if (digits.length <= 2) {
-      minutes = Math.min(60, parseInt(digits, 10) || 0);
-      seconds = 0;
-    } else {
-      const minsPart = digits.slice(0, digits.length - 2);
-      const secsPart = digits.slice(-2);
-      minutes = Math.min(60, parseInt(minsPart, 10) || 0);
-      seconds = minutes === 60 ? 0 : Math.min(59, parseInt(secsPart, 10) || 0);
-    }
-    setDurationInput(formatDuration(minutes * 60 + seconds));
-  };
-
-  const normalizeDurationInput = () => {
-    const total = parseDurationInput(durationInput);
-    setDurationInput(formatDuration(total > 0 ? total : 60));
-  };
+  const [selectedAroma, setSelectedAroma] = useState(settings.aromaScent ?? "Lavender");
+  const [intensity, setIntensity] = useState(settings.aromaIntensity ?? 0.6);
+  const [durationSeconds, setDurationSeconds] = useState(180);
 
   const handleTimerPress = () => {
     if (!deviceId) return;
     if (secondsRemaining === null) {
-      const total = Math.max(60, parseDurationInput(durationInput));
-      setDurationInput(formatDuration(total));
+      const total = Math.max(60, durationSeconds);
       startTimer(deviceId, "aroma", total);
       return;
     }
@@ -2263,10 +2473,13 @@ function Aroma({ navigation, route }) {
     }
     if (secondsRemaining > 0) {
       resumeTimer(deviceId, "aroma");
+      return;
     }
+    resetTimer(deviceId, "aroma");
   };
 
   const handleSave = () => {
+    updateSettings({ aromaScent: selectedAroma, aromaIntensity: intensity });
     navigation.goBack();
   };
 
@@ -2274,6 +2487,7 @@ function Aroma({ navigation, route }) {
     <LinearGradient colors={G_TERRACOTTA} locations={[0, 0.5, 1]} style={{ flex: 1 }} start={{ x: 0.05, y: 0 }} end={{ x: 0.95, y: 1 }}>
       <SafeAreaView style={{ flex: 1 }}>
         <StatusBar barStyle="light-content" />
+        <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : "height"} style={{ flex: 1 }}>
         <ScrollView contentContainerStyle={{ paddingHorizontal: 22, paddingTop: 20, paddingBottom: 40, gap: 16 }} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
           <DarkHeader title="Aroma" subtitle="Scent, timer & cartridge" navigation={navigation} />
 
@@ -2331,22 +2545,7 @@ function Aroma({ navigation, route }) {
             <Text style={{ color: pal.w55, fontSize: 11, letterSpacing: 2, textTransform: "uppercase" }}>Diffuser timer</Text>
             <Text style={{ color: pal.w30, fontSize: 11 }}>Session countdown · max 60 minutes</Text>
             {secondsRemaining === null ? (
-              <TextInput
-                value={durationInput}
-                onChangeText={handleCounterInput}
-                onBlur={normalizeDurationInput}
-                keyboardType="number-pad"
-                selectTextOnFocus
-                style={{
-                  color: pal.white,
-                  fontSize: 52,
-                  fontWeight: "200",
-                  letterSpacing: 3,
-                  textAlign: "center",
-                  minWidth: 220,
-                  padding: 0,
-                }}
-              />
+              <TimeBoxes initialSeconds={180} onChange={setDurationSeconds} />
             ) : (
               <Text style={{ color: pal.white, fontSize: 52, fontWeight: "200", letterSpacing: 3 }}>{formatDuration(secondsRemaining)}</Text>
             )}
@@ -2364,10 +2563,16 @@ function Aroma({ navigation, route }) {
             <Text style={{ color: pal.w30, fontSize: 11 }}>
               {secondsRemaining === null ? "Tap to start countdown" : isPaused ? "Paused" : isRunning ? "Counting down…" : "Finished"}
             </Text>
+            {secondsRemaining !== null ? (
+              <TouchableOpacity activeOpacity={0.8} onPress={() => resetTimer(deviceId, "aroma")}>
+                <Text style={{ color: pal.w55, fontSize: 12, fontWeight: "600" }}>Reset</Text>
+              </TouchableOpacity>
+            ) : null}
           </GlassCard>
 
           <GlassButton label="Save settings" onPress={handleSave} filled color={pal.burgundy} />
         </ScrollView>
+        </KeyboardAvoidingView>
       </SafeAreaView>
     </LinearGradient>
   );
@@ -2423,9 +2628,8 @@ function ActiveMode({ navigation }) {
     { id: "Sleep", icon: "moon" },
     { id: "Auto", icon: "sparkles" },
     { id: "Allergy", icon: "sparkles" },
-    { id: "Manual", icon: "sparkles" },
   ];
-  const modeProgress = { Sleep: 0.33, Auto: 0.55, Allergy: 0.72, Manual: 1 };
+  const modeProgress = { Sleep: 0.33, Auto: 0.6, Allergy: 0.9 };
 
   return (
     <DarkScreen gradient={G_TEAL}>
@@ -2523,12 +2727,17 @@ function TimerSetting({ navigation, route }) {
   const { purifier } = getDeviceTimers(deviceId);
   const purifierActive = purifier.secondsRemaining !== null && purifier.secondsRemaining > 0;
   const [timer, setTimer] = useState(settings.timer);
+  const [customSeconds, setCustomSeconds] = useState(0);
   const options = ["Off", "30 min", "1 hour", "2 hours", "4 hours"];
 
   const handleStartTimer = () => {
     if (!deviceId) return;
     const total = shutOffLabelToSeconds(timer);
     if (total) startTimer(deviceId, "purifier", total);
+  };
+
+  const handleStartCustom = () => {
+    if (deviceId && customSeconds > 0) startTimer(deviceId, "purifier", customSeconds);
   };
 
   return (
@@ -2547,6 +2756,14 @@ function TimerSetting({ navigation, route }) {
       {options.map((option) => (
         <SelectRow key={option} icon="timer-outline" title={option} selected={timer === option} onPress={() => setTimer(option)} />
       ))}
+      <GlassCard style={{ alignItems: "center", gap: 12 }}>
+        <Text style={{ color: pal.w55, fontSize: 11, letterSpacing: 2, textTransform: "uppercase" }}>Custom shut-off</Text>
+        <Text style={{ color: pal.w30, fontSize: 11 }}>Minutes : seconds</Text>
+        <TimeBoxes initialSeconds={0} onChange={setCustomSeconds} />
+        {customSeconds > 0 ? (
+          <GlassButton label={`Start ${formatDuration(customSeconds)} timer`} filled color={pal.terracotta} onPress={handleStartCustom} />
+        ) : null}
+      </GlassCard>
       {timer !== "Off" ? (
         <GlassButton label="Start timer" filled color={pal.terracotta} onPress={handleStartTimer} />
       ) : null}
@@ -2577,9 +2794,9 @@ function DeviceFilterMaintenance({ navigation }) {
         <Text style={{ fontSize: 14, color: pal.w55, textAlign: "center" }}>HEPA H13 filter life remaining</Text>
         <ProgressBar value={settings.hepaLife / 100} color={pal.teal} />
       </GlassCard>
-      <DarkRow icon="air-filter" title="HEPA H13 Filter" value={`${settings.hepaLife}%`} />
-      <DarkRow icon="air-filter" title="Carbon Pre-filter" value={`${settings.carbonLife}%`} />
-      <DarkRow icon="lamp" title="UV-C Lamp" value={`${settings.uvLife}%`} />
+      <StatusRow icon="air-filter" title="HEPA H13 Filter" value={`${settings.hepaLife}%`} />
+      <StatusRow icon="air-filter" title="Carbon Pre-filter" value={`${settings.carbonLife}%`} />
+      <StatusRow icon="lamp" title="UV-C Lamp" value={`${settings.uvLife}%`} />
       <GlassButton label="Back to settings" onPress={() => navigation.navigate("DeviceSettings")} />
     </DarkScreen>
   );
@@ -2589,10 +2806,10 @@ function DeviceSettings({ navigation }) {
   return (
     <DarkScreen gradient={G_TERRACOTTA}>
       <DarkHeader title="Settings" subtitle="Device preferences" navigation={navigation} />
-      <DarkRow icon="air-filter" title="Filter Maintenance" onPress={() => navigation.navigate("DeviceFilterMaintenance")} />
+      <DarkRow icon="air-filter" title="Filter Maintenance" onPress={() => navigation.navigate("FilterMaintenance")} />
       <DarkRow icon="bell-outline" title="Notifications" onPress={() => navigation.navigate("Notifications")} />
       <DarkRow icon="download" title="Firmware Update" onPress={() => navigation.navigate("FirmwareAvailable")} />
-      <GlassButton label="Back to purifier" onPress={() => navigation.goBack()} />
+      <GlassButton label="Back to purifier" onPress={() => navigation.navigate("DeviceControl")} />
     </DarkScreen>
   );
 }
@@ -2699,14 +2916,29 @@ function AddCustomRoom({ navigation }) {
   );
 }
 
+const NOTIFICATION_ITEMS = [
+  "Filter replacement reminder",
+  "Poor air quality alert",
+  "Device offline alert",
+  "Firmware update available",
+];
+
 function Notifications({ navigation }) {
+  const { settings, updateSettings } = useDeviceSettings();
+  const toggle = (item) =>
+    updateSettings({ notifications: { ...settings.notifications, [item]: !settings.notifications[item] } });
+
   return (
     <DarkScreen gradient={G_TERRACOTTA}>
       <DarkHeader title="Notifications" subtitle="Alerts and reminders" navigation={navigation} />
-      {["Filter replacement reminder", "Poor air quality alert", "Device offline alert", "Firmware update available"].map((x) => (
+      {NOTIFICATION_ITEMS.map((x) => (
         <View key={x} style={{ minHeight: 62, borderRadius: 16, borderWidth: 1, borderColor: pal.glassBorder, backgroundColor: pal.glass, paddingHorizontal: 14, paddingVertical: 14, flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
           <Text style={{ flex: 1, fontSize: 14, color: pal.w88, fontWeight: "600", paddingRight: 12, lineHeight: 20 }}>{x}</Text>
-          <Toggle />
+          <Toggle
+            on={settings.notifications[x]}
+            activeColor={pal.terracotta}
+            onPress={() => toggle(x)}
+          />
         </View>
       ))}
     </DarkScreen>
@@ -2727,7 +2959,6 @@ function FirmwareAvailable({ navigation }) {
         </View>
         <View style={{ gap: 12 }}>
           <GlassButton label="Update now" onPress={() => navigation.navigate("FirmwareUpdating")} filled />
-          <GlassButton label="Later" onPress={() => navigation.goBack()} />
         </View>
       </View>
     </DarkScreen>
@@ -2785,26 +3016,36 @@ function FirmwareComplete({ navigation }) {
 
 function UserProfile({ navigation }) {
   const { language } = useLanguage();
+  const { settings, updateSettings } = useDeviceSettings();
+  const [name, setName] = useState(settings.profileName);
+  const [email, setEmail] = useState(settings.profileEmail);
+  const initial = (settings.profileName || "U").trim().charAt(0).toUpperCase() || "U";
+
+  const handleSave = () =>
+    updateSettings({
+      profileName: name.trim() || settings.profileName,
+      profileEmail: email.trim() || settings.profileEmail,
+    });
 
   return (
     <DarkScreen gradient={G_TERRACOTTA}>
       <DarkHeader title="Profile" subtitle="Account management" navigation={navigation} />
-      <View style={{ alignItems: "center", paddingVertical: 20, gap: 10 }}>
+      <View style={{ alignItems: "center", paddingVertical: 12, gap: 10 }}>
         <View style={{ width: 72, height: 72, borderRadius: 36, backgroundColor: pal.terracotta, alignItems: "center", justifyContent: "center", borderWidth: 2, borderColor: pal.glassBorder }}>
-          <Text style={{ color: pal.white, fontSize: 28, fontWeight: "900" }}>M</Text>
+          <Text style={{ color: pal.white, fontSize: 28, fontWeight: "900" }}>{initial}</Text>
         </View>
-        <Text style={{ color: pal.white, fontSize: 20, fontWeight: "700" }}>Mesud Guluyev</Text>
-        <Text style={{ color: pal.w55, fontSize: 13 }}>mesud@example.com</Text>
+        <Text style={{ color: pal.white, fontSize: 20, fontWeight: "700" }}>{settings.profileName}</Text>
+        <Text style={{ color: pal.w55, fontSize: 13 }}>{settings.profileEmail}</Text>
       </View>
-      <DarkRow icon="account" title="Name" value="Mesud Guluyev" />
-      <DarkRow icon="email" title="Email" value="mesud@example.com" />
+      <GlassField label="Name" value={name} onChangeText={setName} placeholder="Your name" autoCapitalize="words" />
+      <GlassField label="Email" value={email} onChangeText={setEmail} placeholder="Your email" keyboardType="email-address" />
       <DarkRow
         icon="translate"
         title="Language"
         value={language}
         onPress={() => navigation.navigate("Language", { fromSettings: true })}
       />
-      <View style={{ flexGrow: 1, minHeight: 18 }} />
+      <GlassButton label="Save changes" filled color={pal.terracotta} onPress={handleSave} />
       <GlassButton label="Logout" onPress={() => navigation.navigate("SignIn")} />
     </DarkScreen>
   );
@@ -2837,15 +3078,17 @@ function AppNavigator() {
 
 export default function App() {
   return (
-    <LanguageProvider>
-      <RoomsProvider>
-        <DeviceSettingsProvider>
-          <DeviceTimersProvider>
-            <AppNavigator />
-          </DeviceTimersProvider>
-        </DeviceSettingsProvider>
-      </RoomsProvider>
-    </LanguageProvider>
+    <SafeAreaProvider>
+      <LanguageProvider>
+        <RoomsProvider>
+          <DeviceSettingsProvider>
+            <DeviceTimersProvider>
+              <AppNavigator />
+            </DeviceTimersProvider>
+          </DeviceSettingsProvider>
+        </RoomsProvider>
+      </LanguageProvider>
+    </SafeAreaProvider>
   );
 }
 
