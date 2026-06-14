@@ -14,6 +14,7 @@ import {
   KeyboardAvoidingView,
   Platform,
   PanResponder,
+  AccessibilityInfo,
 } from "react-native";
 import { NavigationContainer } from "@react-navigation/native";
 import { createNativeStackNavigator } from "@react-navigation/native-stack";
@@ -206,6 +207,9 @@ function DarkHeader({ title, subtitle, navigation, onBack }) {
         <TouchableOpacity
           style={{ width: 36, height: 36, borderRadius: 18, backgroundColor: pal.glass, alignItems: "center", justifyContent: "center", borderWidth: 1, borderColor: pal.glassBorder }}
           onPress={onBack || (() => navigation.goBack())}
+          accessibilityRole="button"
+          accessibilityLabel="Go back"
+          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
         >
           <Ionicons name="chevron-back" size={18} color={pal.w88} />
         </TouchableOpacity>
@@ -229,6 +233,8 @@ function GlassButton({ label, onPress, filled = false, color = pal.teal }) {
           : { backgroundColor: pal.glass, borderWidth: 1, borderColor: pal.glassBorder },
       ]}
       onPress={onPress}
+      accessibilityRole="button"
+      accessibilityLabel={label}
     >
       <Text style={{ color: pal.white, fontWeight: "700", fontSize: 15 }}>{label}</Text>
     </TouchableOpacity>
@@ -247,7 +253,7 @@ function MauveOmbreButton({ label, onPress }) {
         end={{ x: 0.5, y: 0 }}
         style={{ borderRadius: 26, paddingTop: 14, paddingBottom: 2, paddingHorizontal: 2 }}
       >
-        <TouchableOpacity activeOpacity={0.88} onPress={onPress}>
+        <TouchableOpacity activeOpacity={0.88} onPress={onPress} accessibilityRole="button" accessibilityLabel={label}>
           <LinearGradient
             colors={["rgba(60,46,24,0.2)", "rgba(176,141,141,0.65)", pal.mauve, "#C4A0A0"]}
             locations={[0, 0.35, 0.7, 1]}
@@ -275,6 +281,8 @@ function MauveFlatButton({ label, onPress }) {
     <TouchableOpacity
       activeOpacity={0.88}
       onPress={onPress}
+      accessibilityRole="button"
+      accessibilityLabel={label}
       style={{
         width: "100%",
         height: 52,
@@ -291,7 +299,27 @@ function MauveFlatButton({ label, onPress }) {
   );
 }
 
-function PulseGlowInviteCard({ children, ringId = "Invite", variant = "tealTerracotta", animate = true, oval = false }) {
+function useReduceMotion() {
+  const [reduce, setReduce] = useState(false);
+  useEffect(() => {
+    let mounted = true;
+    if (AccessibilityInfo.isReduceMotionEnabled) {
+      AccessibilityInfo.isReduceMotionEnabled().then((v) => mounted && setReduce(!!v));
+    }
+    const sub = AccessibilityInfo.addEventListener
+      ? AccessibilityInfo.addEventListener("reduceMotionChanged", (v) => setReduce(!!v))
+      : null;
+    return () => {
+      mounted = false;
+      if (sub && sub.remove) sub.remove();
+    };
+  }, []);
+  return reduce;
+}
+
+function PulseGlowInviteCard({ children, ringId = "Invite", variant = "tealTerracotta", animate: animateProp = true, oval = false }) {
+  const reduceMotion = useReduceMotion();
+  const animate = animateProp && !reduceMotion;
   const pulse = useRef(new Animated.Value(animate ? 0 : 1)).current;
   const ringSize = Math.min(width - 48, 320);
   const h = ringSize * (oval ? 1.22 : 1.08);
@@ -504,6 +532,7 @@ function GlassField({ label, value = "", onChangeText, placeholder, secure, keyb
           autoCorrect={false}
           onFocus={() => setFocused(true)}
           onBlur={() => setFocused(false)}
+          accessibilityLabel={label}
           style={{ color: pal.w88, fontSize: 15, padding: 0 }}
           placeholderTextColor={pal.w55}
         />
@@ -580,6 +609,8 @@ function DarkRow({ icon, title, value, onPress, danger }) {
       activeOpacity={0.8}
       style={{ height: 60, borderRadius: 16, borderWidth: 1, borderColor: pal.glassBorder, backgroundColor: pal.glass, paddingHorizontal: 14, flexDirection: "row", alignItems: "center", gap: 12 }}
       onPress={onPress}
+      accessibilityRole={onPress ? "button" : "text"}
+      accessibilityLabel={value ? `${title}, ${value}` : title}
     >
       <MaterialCommunityIcons name={icon} size={20} color={danger ? "#C84545" : pal.teal} />
       <Text style={{ flex: 1, fontSize: 14, color: pal.w88, fontWeight: "600" }}>{title}</Text>
@@ -599,14 +630,21 @@ function StatusRow({ icon, title, value, danger }) {
   );
 }
 
-function Toggle({ on = true, activeColor = pal.teal, onPress }) {
+function Toggle({ on = true, activeColor = pal.teal, onPress, label }) {
   const track = (
     <View style={[{ width: 48, height: 28, borderRadius: 14, padding: 3 }, on ? { backgroundColor: activeColor } : { backgroundColor: "rgba(221,215,193,0.15)" }]}>
       <View style={[{ width: 22, height: 22, borderRadius: 11, backgroundColor: CREAM }, on ? { alignSelf: "flex-end" } : { alignSelf: "flex-start" }]} />
     </View>
   );
   return onPress ? (
-    <TouchableOpacity activeOpacity={0.85} onPress={onPress}>
+    <TouchableOpacity
+      activeOpacity={0.85}
+      onPress={onPress}
+      accessibilityRole="switch"
+      accessibilityState={{ checked: on }}
+      accessibilityLabel={label}
+      hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+    >
       {track}
     </TouchableOpacity>
   ) : (
@@ -770,40 +808,12 @@ function AuraOrb({ size = width * 0.88, variant = "warm", vivid = false }) {
   );
 }
 
-function BounceHint({ text }) {
-  const bounce = useRef(new Animated.Value(0)).current;
-
-  useEffect(() => {
-    const anim = Animated.loop(
-      Animated.sequence([
-        Animated.timing(bounce, { toValue: -5, duration: 1100, easing: Easing.inOut(Easing.sin), useNativeDriver: true }),
-        Animated.timing(bounce, { toValue: 0, duration: 1100, easing: Easing.inOut(Easing.sin), useNativeDriver: true }),
-      ])
-    );
-    anim.start();
-    return () => anim.stop();
-  }, [bounce]);
-
-  return (
-    <Animated.Text
-      style={{
-        transform: [{ translateY: bounce }],
-        color: "rgba(221,215,193,0.45)",
-        fontSize: 11,
-        letterSpacing: 1.2,
-        textAlign: "center",
-        fontStyle: "italic",
-      }}
-    >
-      {text}
-    </Animated.Text>
-  );
-}
-
 function ScrollCue({ text }) {
   const bounce = useRef(new Animated.Value(0)).current;
+  const reduceMotion = useReduceMotion();
 
   useEffect(() => {
+    if (reduceMotion) return undefined;
     const anim = Animated.loop(
       Animated.sequence([
         Animated.timing(bounce, {
@@ -822,7 +832,7 @@ function ScrollCue({ text }) {
     );
     anim.start();
     return () => anim.stop();
-  }, [bounce]);
+  }, [bounce, reduceMotion]);
 
   return (
     <Animated.View style={{ alignItems: "center", gap: 6, transform: [{ translateY: bounce }] }}>
@@ -877,6 +887,9 @@ function SelectRow({ icon, title, selected, onPress, iconLib = "ionicons" }) {
     <TouchableOpacity
       activeOpacity={0.85}
       onPress={onPress}
+      accessibilityRole="button"
+      accessibilityState={{ selected: !!selected }}
+      accessibilityLabel={title}
       style={{
         minHeight: 60,
         borderRadius: 16,
@@ -925,7 +938,7 @@ function ControlTile({ icon, iconLib = "ionicons", value, label, onPress, readOn
   }
 
   return (
-    <TouchableOpacity activeOpacity={0.85} onPress={onPress} style={style}>
+    <TouchableOpacity activeOpacity={0.85} onPress={onPress} style={style} accessibilityRole="button" accessibilityLabel={value ? `${label}, ${value}` : label}>
       {content}
     </TouchableOpacity>
   );
@@ -2300,7 +2313,7 @@ function ToggleRow({ icon, title, on, onPress }) {
     <View style={{ minHeight: 60, borderRadius: 16, borderWidth: 1, borderColor: pal.glassBorder, backgroundColor: pal.glass, paddingHorizontal: 14, flexDirection: "row", alignItems: "center", gap: 12 }}>
       <MaterialCommunityIcons name={icon} size={20} color={pal.teal} />
       <Text style={{ flex: 1, fontSize: 14, color: pal.w88, fontWeight: "600" }}>{title}</Text>
-      <Toggle on={on} onPress={onPress} />
+      <Toggle on={on} onPress={onPress} label={title} />
     </View>
   );
 }
@@ -2540,6 +2553,8 @@ function Aroma({ navigation, route }) {
                   key={a.name}
                   activeOpacity={0.85}
                   onPress={() => setSelectedAroma(a.name)}
+                  accessibilityRole="button"
+                  accessibilityState={{ selected }}
                   style={[
                     { flex: 1, alignItems: "center", paddingVertical: 20, borderRadius: 18, borderWidth: 1, gap: 8 },
                     selected
@@ -2563,6 +2578,8 @@ function Aroma({ navigation, route }) {
                   key={label}
                   activeOpacity={0.85}
                   onPress={() => setIntensity(val)}
+                  accessibilityRole="button"
+                  accessibilityState={{ selected }}
                   style={{ flexDirection: "row", alignItems: "center", gap: 14, paddingVertical: 4 }}
                 >
                   <View style={[{ width: 36, height: 36, borderRadius: 18, alignItems: "center", justifyContent: "center" }, selected && { backgroundColor: "rgba(221,215,193,0.20)" }]}>
@@ -2971,6 +2988,7 @@ function Notifications({ navigation }) {
             on={settings.notifications[x]}
             activeColor={pal.terracotta}
             onPress={() => toggle(x)}
+            label={x}
           />
         </View>
       ))}
@@ -3102,7 +3120,7 @@ const WATCH_W = 198;
 const WATCH_H = 240;
 
 const watchStyles = StyleSheet.create({
-  round: { width: 40, height: 40, borderRadius: 20, backgroundColor: "rgba(255,255,255,0.14)", alignItems: "center", justifyContent: "center", borderWidth: 1, borderColor: "rgba(255,255,255,0.2)" },
+  round: { width: 44, height: 44, borderRadius: 22, backgroundColor: "rgba(255,255,255,0.14)", alignItems: "center", justifyContent: "center", borderWidth: 1, borderColor: "rgba(255,255,255,0.2)" },
   roundTxt: { color: "#fff", fontSize: 22, fontWeight: "700" },
 });
 
@@ -3132,14 +3150,14 @@ function WatchHome() {
   return (
     <WatchFace gradient={["#E2DCC6", "#A9C2B5", "#4A8B7A"]}>
       <Text style={{ color: "#28302C", fontSize: 17, fontWeight: "700", fontStyle: "italic", textAlign: "center" }}>Welcome Home</Text>
-      <Text style={{ color: "#3C463F", fontSize: 11, textAlign: "center" }}>{activeRoom?.name ?? "Living Room"}</Text>
+      <Text style={{ color: "#28302C", fontSize: 11, textAlign: "center" }}>{activeRoom?.name ?? "Living Room"}</Text>
       <View style={{ alignItems: "center", marginVertical: 2 }}>
         <FanSpiral size={92} bladeColors={[info.color, info.color, info.color]} centerColor="#FFFFFF" />
       </View>
       <Text style={{ color: info.color, fontSize: 13, fontWeight: "800", textAlign: "center" }}>
         {info.key === "good" ? "Air is clean" : `The air quality is ${info.label.toLowerCase()}`}
       </Text>
-      <Text style={{ color: "#3C463F", fontSize: 10, textAlign: "center" }}>PM2.5 {settings.pm25}  |  TVOC {settings.tvoc}</Text>
+      <Text style={{ color: "#28302C", fontSize: 10, textAlign: "center" }}>PM2.5 {settings.pm25}  |  TVOC {settings.tvoc}</Text>
     </WatchFace>
   );
 }
@@ -3187,7 +3205,7 @@ function WatchAroma() {
       <Text style={{ color: "#F0DADA", fontSize: 18, fontWeight: "800", textAlign: "center" }}>{settings.aromaScent}</Text>
       <View style={{ flexDirection: "row", justifyContent: "center", gap: 6, flexWrap: "wrap" }}>
         {scents.map((sc) => (
-          <TouchableOpacity key={sc} onPress={() => updateSettings({ aromaScent: sc })} style={{ paddingHorizontal: 8, paddingVertical: 4, borderRadius: 12, borderWidth: 1, borderColor: sc === settings.aromaScent ? "#E8C9C9" : "rgba(255,255,255,0.22)" }}>
+          <TouchableOpacity key={sc} onPress={() => updateSettings({ aromaScent: sc })} accessibilityRole="button" accessibilityState={{ selected: sc === settings.aromaScent }} style={{ paddingHorizontal: 8, paddingVertical: 4, borderRadius: 12, borderWidth: 1, borderColor: sc === settings.aromaScent ? "#E8C9C9" : "rgba(255,255,255,0.22)" }}>
             <Text style={{ color: pal.white, fontSize: 10 }}>{sc}</Text>
           </TouchableOpacity>
         ))}
@@ -3262,7 +3280,7 @@ function WatchMode() {
       {["Sleep", "Auto", "Allergy"].map((m) => {
         const active = settings.activeMode === m;
         return (
-          <TouchableOpacity key={m} activeOpacity={0.8} onPress={() => updateSettings({ activeMode: m })} style={{ borderRadius: 12, paddingVertical: 10, alignItems: "center", backgroundColor: active ? pal.teal : "rgba(255,255,255,0.1)" }}>
+          <TouchableOpacity key={m} activeOpacity={0.8} onPress={() => updateSettings({ activeMode: m })} accessibilityRole="button" accessibilityState={{ selected: active }} style={{ borderRadius: 12, paddingVertical: 10, alignItems: "center", backgroundColor: active ? pal.teal : "rgba(255,255,255,0.1)" }}>
             <Text style={{ color: active ? "#0B1A14" : pal.white, fontWeight: "700", fontSize: 13 }}>{m}</Text>
           </TouchableOpacity>
         );
@@ -3281,7 +3299,7 @@ function WatchTimer() {
         {["Off", "30 min", "1 hour", "2 hours", "4 hours"].map((o) => {
           const active = settings.timer === o;
           return (
-            <TouchableOpacity key={o} activeOpacity={0.8} onPress={() => updateSettings({ timer: o })} style={{ paddingHorizontal: 10, paddingVertical: 8, borderRadius: 12, backgroundColor: active ? pal.terracotta : "rgba(255,255,255,0.12)" }}>
+            <TouchableOpacity key={o} activeOpacity={0.8} onPress={() => updateSettings({ timer: o })} accessibilityRole="button" accessibilityState={{ selected: active }} style={{ paddingHorizontal: 10, paddingVertical: 8, borderRadius: 12, backgroundColor: active ? pal.terracotta : "rgba(255,255,255,0.12)" }}>
               <Text style={{ color: pal.white, fontSize: 12, fontWeight: "600" }}>{o}</Text>
             </TouchableOpacity>
           );
@@ -3309,6 +3327,8 @@ function CircleBubble({ face, size, onOpen, style }) {
     <TouchableOpacity
       activeOpacity={0.8}
       onPress={() => onOpen(face.key)}
+      accessibilityRole="button"
+      accessibilityLabel={face.label}
       style={[{ width: size, height: size, borderRadius: size / 2, backgroundColor: `${face.color}66`, borderWidth: 1.5, borderColor: face.color, alignItems: "center", justifyContent: "center" }, style]}
     >
       <Icon name={face.icon} size={size * 0.42} color="#fff" />
