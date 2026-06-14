@@ -1,7 +1,6 @@
 import React, { useRef, useEffect, useState, createContext, useContext } from "react";
 import { nextTelemetry } from "./src/sim/telemetry";
 import {
-  SafeAreaView,
   ScrollView,
   StyleSheet,
   Text,
@@ -20,6 +19,7 @@ import { createNativeStackNavigator } from "@react-navigation/native-stack";
 import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
 import Svg, { Circle, Path, G, Defs, RadialGradient, Stop, Ellipse } from "react-native-svg";
 import { LinearGradient } from "expo-linear-gradient";
+import { SafeAreaView, SafeAreaProvider } from "react-native-safe-area-context";
 
 const Stack = createNativeStackNavigator();
 const { width, height } = Dimensions.get("window");
@@ -980,11 +980,12 @@ const CHART_DATA = {
   },
 };
 
-function WeekChart({ range = "Week" }) {
+function WeekChart({ range = "Week", onFilterStatus }) {
   const data = CHART_DATA[range] || CHART_DATA.Week;
   const d = `M ${data.points.map((p) => p.join(" ")).join(" L ")}`;
   return (
     <GlassCard>
+      <Text style={{ color: pal.w70, fontSize: 12, fontWeight: "700" }}>AQI trend · lower is cleaner</Text>
       <View style={{ flexDirection: "row", justifyContent: "space-between", paddingHorizontal: 6 }}>
         {data.labels.map((label, i) => (
           <Text key={i} style={{ color: pal.w55, fontSize: 11, letterSpacing: 1 }}>{label}</Text>
@@ -1001,7 +1002,7 @@ function WeekChart({ range = "Week" }) {
           <Text style={{ color: pal.white, fontSize: 22, fontWeight: "700" }}>{data.trend}</Text>
           <Text style={{ color: pal.teal, fontSize: 12, fontWeight: "600" }}>{data.delta}</Text>
         </View>
-        <TouchableOpacity style={{ flexDirection: "row", alignItems: "center", gap: 6, backgroundColor: pal.glass, paddingHorizontal: 14, paddingVertical: 8, borderRadius: 20, borderWidth: 1, borderColor: pal.glassBorder }}>
+        <TouchableOpacity activeOpacity={0.8} onPress={onFilterStatus} style={{ flexDirection: "row", alignItems: "center", gap: 6, backgroundColor: pal.glass, paddingHorizontal: 14, paddingVertical: 8, borderRadius: 20, borderWidth: 1, borderColor: pal.glassBorder }}>
           <MaterialCommunityIcons name="air-filter" size={14} color={pal.w70} />
           <Text style={{ color: pal.w70, fontSize: 12, fontWeight: "600" }}>Filter status</Text>
         </TouchableOpacity>
@@ -1837,6 +1838,16 @@ function DeviceTimersProvider({ children }) {
     });
   };
 
+  const resetTimer = (deviceId, type) => {
+    setTimers((current) => {
+      const base = ensureDeviceTimers(current, deviceId);
+      return {
+        ...base,
+        [deviceId]: { ...base[deviceId], [type]: emptyTimerSlot() },
+      };
+    });
+  };
+
   const getDeviceTimers = (deviceId) => {
     const device = timers[deviceId];
     if (!device) return { aroma: emptyTimerSlot(), purifier: emptyTimerSlot() };
@@ -1844,7 +1855,7 @@ function DeviceTimersProvider({ children }) {
   };
 
   return (
-    <DeviceTimersContext.Provider value={{ startTimer, pauseTimer, resumeTimer, getDeviceTimers }}>
+    <DeviceTimersContext.Provider value={{ startTimer, pauseTimer, resumeTimer, resetTimer, getDeviceTimers }}>
       {children}
     </DeviceTimersContext.Provider>
   );
@@ -1992,6 +2003,8 @@ const DEFAULT_DEVICE_SETTINGS = {
   automations: DEFAULT_AUTOMATIONS,
   aromaScent: "Lavender",
   aromaIntensity: 0.6,
+  profileName: "Mesud Guluyev",
+  profileEmail: "mesud@example.com",
   notifications: {
     "Filter replacement reminder": true,
     "Poor air quality alert": true,
@@ -2263,7 +2276,7 @@ function Analytics({ navigation }) {
           );
         })}
       </View>
-      <WeekChart range={range} />
+      <WeekChart range={range} onFilterStatus={() => navigation.navigate("FilterMaintenance")} />
       <View style={{ flexDirection: "row", gap: 10 }}>
         {[["leaf", stats.best, "Best"], ["chart-line", stats.avg, "Avg"], ["alert", stats.peak, "Peak"]].map(([icon, value, label]) => (
           <View key={label} style={{ flex: 1, minHeight: 88, borderRadius: 18, borderWidth: 1, borderColor: pal.glassBorder, backgroundColor: pal.glass, alignItems: "center", justifyContent: "center", gap: 4, padding: 10 }}>
@@ -2345,11 +2358,12 @@ function Settings({ navigation }) {
 function Aroma({ navigation, route }) {
   const { settings, updateSettings } = useDeviceSettings();
   const { devices, activeRoom } = useRooms();
-  const { startTimer, pauseTimer, resumeTimer, getDeviceTimers } = useDeviceTimers();
+  const { startTimer, pauseTimer, resumeTimer, resetTimer, getDeviceTimers } = useDeviceTimers();
   const deviceId =
     route?.params?.deviceId
     ?? devices.find((item) => item.roomId === activeRoom.id)?.id
-    ?? devices.find((item) => item.status === "Active")?.id;
+    ?? devices.find((item) => item.status === "Active")?.id
+    ?? devices[0]?.id;
   const { aroma: aromaTimer } = getDeviceTimers(deviceId);
   const { secondsRemaining, isRunning, isPaused } = aromaTimer;
   const aromas = [
@@ -2415,7 +2429,9 @@ function Aroma({ navigation, route }) {
     }
     if (secondsRemaining > 0) {
       resumeTimer(deviceId, "aroma");
+      return;
     }
+    resetTimer(deviceId, "aroma");
   };
 
   const handleSave = () => {
@@ -2518,6 +2534,11 @@ function Aroma({ navigation, route }) {
             <Text style={{ color: pal.w30, fontSize: 11 }}>
               {secondsRemaining === null ? "Tap to start countdown" : isPaused ? "Paused" : isRunning ? "Counting down…" : "Finished"}
             </Text>
+            {secondsRemaining !== null ? (
+              <TouchableOpacity activeOpacity={0.8} onPress={() => resetTimer(deviceId, "aroma")}>
+                <Text style={{ color: pal.w55, fontSize: 12, fontWeight: "600" }}>Reset</Text>
+              </TouchableOpacity>
+            ) : null}
           </GlassCard>
 
           <GlassButton label="Save settings" onPress={handleSave} filled color={pal.burgundy} />
@@ -2578,9 +2599,8 @@ function ActiveMode({ navigation }) {
     { id: "Sleep", icon: "moon" },
     { id: "Auto", icon: "sparkles" },
     { id: "Allergy", icon: "sparkles" },
-    { id: "Manual", icon: "sparkles" },
   ];
-  const modeProgress = { Sleep: 0.33, Auto: 0.55, Allergy: 0.72, Manual: 1 };
+  const modeProgress = { Sleep: 0.33, Auto: 0.6, Allergy: 0.9 };
 
   return (
     <DarkScreen gradient={G_TEAL}>
@@ -2766,7 +2786,7 @@ function DeviceSettings({ navigation }) {
       <DarkRow icon="air-filter" title="Filter Maintenance" onPress={() => navigation.navigate("DeviceFilterMaintenance")} />
       <DarkRow icon="bell-outline" title="Notifications" onPress={() => navigation.navigate("Notifications")} />
       <DarkRow icon="download" title="Firmware Update" onPress={() => navigation.navigate("FirmwareAvailable")} />
-      <GlassButton label="Back to purifier" onPress={() => navigation.goBack()} />
+      <GlassButton label="Back to purifier" onPress={() => navigation.navigate("DeviceControl")} />
     </DarkScreen>
   );
 }
@@ -2916,7 +2936,6 @@ function FirmwareAvailable({ navigation }) {
         </View>
         <View style={{ gap: 12 }}>
           <GlassButton label="Update now" onPress={() => navigation.navigate("FirmwareUpdating")} filled />
-          <GlassButton label="Later" onPress={() => navigation.goBack()} />
         </View>
       </View>
     </DarkScreen>
@@ -2974,26 +2993,36 @@ function FirmwareComplete({ navigation }) {
 
 function UserProfile({ navigation }) {
   const { language } = useLanguage();
+  const { settings, updateSettings } = useDeviceSettings();
+  const [name, setName] = useState(settings.profileName);
+  const [email, setEmail] = useState(settings.profileEmail);
+  const initial = (settings.profileName || "U").trim().charAt(0).toUpperCase() || "U";
+
+  const handleSave = () =>
+    updateSettings({
+      profileName: name.trim() || settings.profileName,
+      profileEmail: email.trim() || settings.profileEmail,
+    });
 
   return (
     <DarkScreen gradient={G_TERRACOTTA}>
       <DarkHeader title="Profile" subtitle="Account management" navigation={navigation} />
-      <View style={{ alignItems: "center", paddingVertical: 20, gap: 10 }}>
+      <View style={{ alignItems: "center", paddingVertical: 12, gap: 10 }}>
         <View style={{ width: 72, height: 72, borderRadius: 36, backgroundColor: pal.terracotta, alignItems: "center", justifyContent: "center", borderWidth: 2, borderColor: pal.glassBorder }}>
-          <Text style={{ color: pal.white, fontSize: 28, fontWeight: "900" }}>M</Text>
+          <Text style={{ color: pal.white, fontSize: 28, fontWeight: "900" }}>{initial}</Text>
         </View>
-        <Text style={{ color: pal.white, fontSize: 20, fontWeight: "700" }}>Mesud Guluyev</Text>
-        <Text style={{ color: pal.w55, fontSize: 13 }}>mesud@example.com</Text>
+        <Text style={{ color: pal.white, fontSize: 20, fontWeight: "700" }}>{settings.profileName}</Text>
+        <Text style={{ color: pal.w55, fontSize: 13 }}>{settings.profileEmail}</Text>
       </View>
-      <DarkRow icon="account" title="Name" value="Mesud Guluyev" />
-      <DarkRow icon="email" title="Email" value="mesud@example.com" />
+      <GlassField label="Name" value={name} onChangeText={setName} placeholder="Your name" autoCapitalize="words" />
+      <GlassField label="Email" value={email} onChangeText={setEmail} placeholder="Your email" keyboardType="email-address" />
       <DarkRow
         icon="translate"
         title="Language"
         value={language}
         onPress={() => navigation.navigate("Language", { fromSettings: true })}
       />
-      <View style={{ flexGrow: 1, minHeight: 18 }} />
+      <GlassButton label="Save changes" filled color={pal.terracotta} onPress={handleSave} />
       <GlassButton label="Logout" onPress={() => navigation.navigate("SignIn")} />
     </DarkScreen>
   );
@@ -3026,15 +3055,17 @@ function AppNavigator() {
 
 export default function App() {
   return (
-    <LanguageProvider>
-      <RoomsProvider>
-        <DeviceSettingsProvider>
-          <DeviceTimersProvider>
-            <AppNavigator />
-          </DeviceTimersProvider>
-        </DeviceSettingsProvider>
-      </RoomsProvider>
-    </LanguageProvider>
+    <SafeAreaProvider>
+      <LanguageProvider>
+        <RoomsProvider>
+          <DeviceSettingsProvider>
+            <DeviceTimersProvider>
+              <AppNavigator />
+            </DeviceTimersProvider>
+          </DeviceSettingsProvider>
+        </RoomsProvider>
+      </LanguageProvider>
+    </SafeAreaProvider>
   );
 }
 
