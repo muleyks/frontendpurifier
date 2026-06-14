@@ -1,4 +1,5 @@
 import React, { useRef, useEffect, useState, createContext, useContext } from "react";
+import { nextTelemetry } from "./src/sim/telemetry";
 import {
   SafeAreaView,
   ScrollView,
@@ -1905,6 +1906,12 @@ function useRooms() {
 }
 
 // ─── Device Settings (shared) ─────────────────────────────────────────────────
+const DEFAULT_AUTOMATIONS = [
+  { id: "allergy", name: "Allergy preset", on: true },
+  { id: "pet", name: "Pet preset", on: false },
+  { id: "night", name: "Night preset", on: true },
+];
+
 const DEFAULT_DEVICE_SETTINGS = {
   activeMode: "Sleep",
   fanSpeed: 40,
@@ -1913,9 +1920,15 @@ const DEFAULT_DEVICE_SETTINGS = {
   aqi: 42,
   aqiLabel: "Good",
   pm25: 8,
-  hepaLife: 100,
-  carbonLife: 100,
-  uvLife: 100,
+  tvoc: 85,
+  hepaLife: 78,
+  carbonLife: 41,
+  uvLife: 16,
+  sleepEnabled: true,
+  ledOn: false,
+  autoActivation: true,
+  sleepSchedule: "22:30 – 07:00",
+  automations: DEFAULT_AUTOMATIONS,
 };
 
 const DeviceSettingsContext = createContext(null);
@@ -1926,6 +1939,18 @@ function DeviceSettingsProvider({ children }) {
   const updateSettings = (patch) => {
     setSettings((prev) => ({ ...prev, ...patch }));
   };
+
+  // Live air-quality simulation: AQI/PM2.5/TVOC drift over time and are cleaned
+  // faster at higher fan speed. Screens reading settings.aqi/pm25 update live.
+  useEffect(() => {
+    const id = setInterval(() => {
+      setSettings((prev) => {
+        const next = nextTelemetry({ aqi: prev.aqi }, { fanSpeed: prev.fanSpeed });
+        return { ...prev, aqi: next.aqi, aqiLabel: next.aqiLabel, pm25: next.pm25, tvoc: next.tvoc };
+      });
+    }, 3000);
+    return () => clearInterval(id);
+  }, []);
 
   return (
     <DeviceSettingsContext.Provider value={{ settings, updateSettings }}>
@@ -2034,7 +2059,8 @@ function Dashboard({ navigation }) {
 }
 
 function FanControl({ navigation }) {
-  const [fanDegree, setFanDegree] = useState(2);
+  const { settings, updateSettings } = useDeviceSettings();
+  const fanDegree = Math.min(5, Math.max(1, Math.round(settings.fanSpeed / 20) || 1));
 
   return (
     <LinearGradient colors={G_MAUVE} style={{ flex: 1 }} start={{ x: 0.2, y: 0 }} end={{ x: 0.8, y: 1 }}>
@@ -2054,7 +2080,7 @@ function FanControl({ navigation }) {
                   <TouchableOpacity
                     key={deg}
                     activeOpacity={0.85}
-                    onPress={() => setFanDegree(deg)}
+                    onPress={() => updateSettings({ fanSpeed: deg * 20 })}
                     style={[
                       { width: 48, height: 48, borderRadius: 24, alignItems: "center", justifyContent: "center", borderWidth: 1 },
                       selected
@@ -2075,65 +2101,102 @@ function FanControl({ navigation }) {
   );
 }
 
+function ToggleRow({ icon, title, on, onPress }) {
+  return (
+    <View style={{ minHeight: 60, borderRadius: 16, borderWidth: 1, borderColor: pal.glassBorder, backgroundColor: pal.glass, paddingHorizontal: 14, flexDirection: "row", alignItems: "center", gap: 12 }}>
+      <MaterialCommunityIcons name={icon} size={20} color={pal.teal} />
+      <Text style={{ flex: 1, fontSize: 14, color: pal.w88, fontWeight: "600" }}>{title}</Text>
+      <Toggle on={on} onPress={onPress} />
+    </View>
+  );
+}
+
 function SleepMode({ navigation }) {
+  const { settings, updateSettings } = useDeviceSettings();
   return (
     <DarkScreen gradient={G_TEAL}>
       <DarkHeader title="Sleep Mode" subtitle="Silent bedroom routine" navigation={navigation} />
       <GlassCard style={{ alignItems: "center", gap: 8 }}>
         <Text style={{ color: pal.w55, fontSize: 11, letterSpacing: 2, textTransform: "uppercase" }}>Noise Level</Text>
         <Text style={{ color: pal.white, fontSize: 44, fontWeight: "300" }}>
-          22 <Text style={{ fontSize: 20, color: pal.w55 }}>dB</Text>
+          {settings.sleepEnabled ? "22" : "38"} <Text style={{ fontSize: 20, color: pal.w55 }}>dB</Text>
         </Text>
-        <ProgressBar value={0.3} />
+        <ProgressBar value={settings.sleepEnabled ? 0.3 : 0.6} />
       </GlassCard>
-      <DarkRow icon="calendar-night" title="Every night" value="22:30 – 07:00" />
-      <DarkRow icon="brightness-6" title="LED brightness" value="Off" />
-      <DarkRow icon="auto-fix" title="Auto activation" value="On" />
+      <ToggleRow icon="power-sleep" title="Sleep mode" on={settings.sleepEnabled} onPress={() => updateSettings({ sleepEnabled: !settings.sleepEnabled })} />
+      <DarkRow icon="calendar-night" title="Schedule" value={settings.sleepSchedule} />
+      <ToggleRow icon="brightness-6" title="LED brightness" on={settings.ledOn} onPress={() => updateSettings({ ledOn: !settings.ledOn })} />
+      <ToggleRow icon="auto-fix" title="Auto activation" on={settings.autoActivation} onPress={() => updateSettings({ autoActivation: !settings.autoActivation })} />
     </DarkScreen>
   );
 }
 
 function FilterMaintenance({ navigation }) {
+  const { settings } = useDeviceSettings();
   return (
     <DarkScreen gradient={G_QUALITY}>
       <DarkHeader title="Filter Life" subtitle="HEPA H13 status" navigation={navigation} />
       <View style={{ alignItems: "center", paddingVertical: 16 }}>
-        <CircleRing value={0.78} size={210} label="HEPA filter" color={pal.teal} />
+        <CircleRing value={settings.hepaLife / 100} size={210} label="HEPA filter" color={pal.teal} />
       </View>
-      <DarkRow icon="air-filter" title="HEPA H13 Filter" value="78%" />
-      <DarkRow icon="air-filter" title="Carbon Pre-filter" value="41%" />
-      <DarkRow icon="lamp" title="UV-C Lamp" value="16%" danger />
+      <DarkRow icon="air-filter" title="HEPA H13 Filter" value={`${settings.hepaLife}%`} />
+      <DarkRow icon="air-filter" title="Carbon Pre-filter" value={`${settings.carbonLife}%`} />
+      <DarkRow icon="lamp" title="UV-C Lamp" value={`${settings.uvLife}%`} danger />
       <GlassButton label="Replace filter" onPress={() => navigation.navigate("ReplaceFilter")} filled />
     </DarkScreen>
   );
 }
 
 function ReplaceFilter({ navigation }) {
+  const { updateSettings } = useDeviceSettings();
   return (
     <DarkScreen gradient={G_TEAL}>
       <DarkHeader title="Replace Filter" subtitle="Guided workflow" navigation={navigation} />
       {["Turn purifier off", "Remove old filter", "Install new filter"].map((x, i) => (
         <DarkRow key={x} icon={`numeric-${i + 1}-circle`} title={`${i + 1}. ${x}`} value="" />
       ))}
-      <GlassButton label="Filter replaced" onPress={() => navigation.navigate("FilterMaintenance")} filled />
+      <GlassButton
+        label="Filter replaced"
+        onPress={() => {
+          updateSettings({ hepaLife: 100, carbonLife: 100, uvLife: 100 });
+          navigation.navigate("FilterMaintenance");
+        }}
+        filled
+      />
     </DarkScreen>
   );
 }
 
+const ANALYTICS_STATS = {
+  Day: { best: "6", avg: "14", peak: "39" },
+  Week: { best: "5", avg: "12", peak: "48" },
+  Month: { best: "4", avg: "18", peak: "63" },
+};
+
 function Analytics({ navigation }) {
+  const [range, setRange] = useState("Week");
+  const stats = ANALYTICS_STATS[range];
   return (
     <DarkScreen gradient={G_QUALITY}>
-      <DarkHeader title="Air Quality" subtitle="Weekly overview" navigation={navigation} />
+      <DarkHeader title="Air Quality" subtitle={`${range} overview`} navigation={navigation} />
       <View style={{ flexDirection: "row", height: 38, borderRadius: 14, backgroundColor: pal.glass, borderWidth: 1, borderColor: pal.glassBorder, padding: 4 }}>
-        {["Day", "Week", "Month"].map((t, i) => (
-          <View key={t} style={[{ flex: 1, alignItems: "center", justifyContent: "center", borderRadius: 10 }, i === 1 && { backgroundColor: pal.teal }]}>
-            <Text style={[{ fontSize: 13, fontWeight: "700" }, i === 1 ? { color: pal.white } : { color: pal.w55 }]}>{t}</Text>
-          </View>
-        ))}
+        {["Day", "Week", "Month"].map((t) => {
+          const selected = range === t;
+          return (
+            <TouchableOpacity
+              key={t}
+              activeOpacity={0.85}
+              onPress={() => setRange(t)}
+              style={[{ flex: 1, alignItems: "center", justifyContent: "center", borderRadius: 10 }, selected && { backgroundColor: pal.teal }]}
+            >
+              <Text style={[{ fontSize: 13, fontWeight: "700" }, selected ? { color: pal.white } : { color: pal.w55 }]}>{t}</Text>
+            </TouchableOpacity>
+          );
+        })}
       </View>
       <WeekChart />
       <View style={{ flexDirection: "row", gap: 10 }}>
-        {[["leaf", "5", "Best"], ["chart-line", "12", "Avg"], ["alert", "48", "Peak"]].map(([icon, value, label]) => (
+        {[["leaf", stats.best, "Best"], ["chart-line", stats.avg, "Avg"], ["alert", stats.peak, "Peak"]].map(([icon, value, label]) => (
           <View key={label} style={{ flex: 1, minHeight: 88, borderRadius: 18, borderWidth: 1, borderColor: pal.glassBorder, backgroundColor: pal.glass, alignItems: "center", justifyContent: "center", gap: 4, padding: 10 }}>
             <MaterialCommunityIcons name={icon} size={20} color={pal.teal} />
             <Text style={{ fontSize: 20, fontWeight: "800", color: pal.white }}>{value}</Text>
@@ -2145,29 +2208,49 @@ function Analytics({ navigation }) {
   );
 }
 
+const AUTOMATION_ICONS = { allergy: "flower-pollen", pet: "paw", night: "weather-night" };
+
 function Automation({ navigation }) {
+  const { settings, updateSettings } = useDeviceSettings();
+  const toggle = (id) =>
+    updateSettings({ automations: settings.automations.map((a) => (a.id === id ? { ...a, on: !a.on } : a)) });
   return (
     <DarkScreen gradient={G_TEAL}>
       <DarkHeader title="Automation" subtitle="Scenario presets" navigation={navigation} />
-      <DarkRow icon="flower-pollen" title="Allergy preset" value="On" />
-      <DarkRow icon="paw" title="Pet preset" value="Off" />
-      <DarkRow icon="weather-night" title="Night preset" value="On" />
+      {settings.automations.map((a) => (
+        <ToggleRow key={a.id} icon={AUTOMATION_ICONS[a.id] || "robot"} title={a.name} on={a.on} onPress={() => toggle(a.id)} />
+      ))}
       <GlassButton label="Create rule" onPress={() => navigation.navigate("CustomAutomation")} filled />
     </DarkScreen>
   );
 }
 
+const TRIGGER_OPTIONS = ["PM2.5 above 35", "PM2.5 above 50", "AQI above 100", "Pollen high"];
+const CONDITION_OPTIONS = ["18:00 – 23:00", "All day", "Night only", "Weekends"];
+const ACTION_OPTIONS = ["Allergy Mode", "Boost fan", "Sleep Mode", "Turbo"];
+
 function CustomAutomation({ navigation }) {
+  const { settings, updateSettings } = useDeviceSettings();
   const [ruleName, setRuleName] = useState("");
+  const [trigger, setTrigger] = useState(0);
+  const [condition, setCondition] = useState(0);
+  const [action, setAction] = useState(0);
+
+  const handleSave = () => {
+    const name = ruleName.trim() || ACTION_OPTIONS[action];
+    updateSettings({ automations: [...settings.automations, { id: `rule-${Date.now()}`, name, on: true }] });
+    navigation.navigate("Automation");
+  };
 
   return (
     <DarkScreen gradient={G_TEAL}>
       <DarkHeader title="Custom Rule" subtitle="Trigger-based action" navigation={navigation} />
-      <GlassField label="Rule name" value={ruleName} onChangeText={setRuleName} placeholder="Rule name" />
-      <DarkRow icon="target" title="Trigger" value="PM2.5 above 35" />
-      <DarkRow icon="clock-outline" title="Condition" value="18:00 – 23:00" />
-      <DarkRow icon="auto-fix" title="Action" value="Allergy Mode" />
-      <GlassButton label="Save automation" onPress={() => navigation.navigate("Automation")} filled />
+      <GlassField label="Rule name" value={ruleName} onChangeText={setRuleName} placeholder="e.g. Evening allergy care" />
+      <SelectRow icon="target" title={`Trigger · ${TRIGGER_OPTIONS[trigger]}`} onPress={() => setTrigger((i) => (i + 1) % TRIGGER_OPTIONS.length)} />
+      <SelectRow icon="clock-outline" title={`Condition · ${CONDITION_OPTIONS[condition]}`} onPress={() => setCondition((i) => (i + 1) % CONDITION_OPTIONS.length)} />
+      <SelectRow icon="auto-fix" title={`Action · ${ACTION_OPTIONS[action]}`} onPress={() => setAction((i) => (i + 1) % ACTION_OPTIONS.length)} />
+      <Text style={{ color: pal.w30, fontSize: 11, textAlign: "center" }}>Tap a row to change it</Text>
+      <GlassButton label="Save automation" onPress={handleSave} filled />
     </DarkScreen>
   );
 }
