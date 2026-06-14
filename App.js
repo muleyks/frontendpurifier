@@ -2063,10 +2063,13 @@ const DEFAULT_AUTOMATIONS = [
   { id: "night", name: "Night preset", on: true },
 ];
 
-const DEFAULT_DEVICE_SETTINGS = {
+// Per-device (per-room) controllable properties.
+const DEVICE_DEFAULTS = {
   activeMode: "Sleep",
   fanSpeed: 40,
   aromaLevel: 62,
+  aromaScent: "Lavender",
+  aromaIntensity: 0.6,
   timer: "Off",
   aqi: 42,
   aqiLabel: "Good",
@@ -2079,9 +2082,13 @@ const DEFAULT_DEVICE_SETTINGS = {
   ledOn: false,
   autoActivation: true,
   sleepSchedule: "22:30 – 07:00",
+};
+
+const DEVICE_KEYS = Object.keys(DEVICE_DEFAULTS);
+
+// Account-level prefs shared across all devices.
+const GLOBAL_DEFAULTS = {
   automations: DEFAULT_AUTOMATIONS,
-  aromaScent: "Lavender",
-  aromaIntensity: 0.6,
   profileName: "Mesud Guluyev",
   profileEmail: "mesud@example.com",
   notifications: {
@@ -2095,23 +2102,48 @@ const DEFAULT_DEVICE_SETTINGS = {
 const DeviceSettingsContext = createContext(null);
 
 function DeviceSettingsProvider({ children }) {
-  const [settings, setSettings] = useState(DEFAULT_DEVICE_SETTINGS);
+  const { activeRoomId, devices } = useRooms();
+  const [global, setGlobal] = useState(GLOBAL_DEFAULTS);
+  const [byRoom, setByRoom] = useState({}); // roomId -> per-device settings
 
+  // Route each patch to per-device props vs account-level props so existing
+  // screens keep calling updateSettings(patch) unchanged — now scoped to the
+  // active device (room).
   const updateSettings = (patch) => {
-    setSettings((prev) => ({ ...prev, ...patch }));
+    const devicePatch = {};
+    const globalPatch = {};
+    Object.keys(patch).forEach((k) => {
+      if (DEVICE_KEYS.includes(k)) devicePatch[k] = patch[k];
+      else globalPatch[k] = patch[k];
+    });
+    if (Object.keys(devicePatch).length) {
+      setByRoom((prev) => ({ ...prev, [activeRoomId]: { ...DEVICE_DEFAULTS, ...prev[activeRoomId], ...devicePatch } }));
+    }
+    if (Object.keys(globalPatch).length) {
+      setGlobal((prev) => ({ ...prev, ...globalPatch }));
+    }
   };
 
-  // Live air-quality simulation: AQI/PM2.5/TVOC drift over time and are cleaned
-  // faster at higher fan speed. Screens reading settings.aqi/pm25 update live.
+  // Live air-quality simulation per device: each room's AQI drifts and is cleaned
+  // faster at its own fan speed.
   useEffect(() => {
     const id = setInterval(() => {
-      setSettings((prev) => {
-        const next = nextTelemetry({ aqi: prev.aqi }, { fanSpeed: prev.fanSpeed });
-        return { ...prev, aqi: next.aqi, aqiLabel: next.aqiLabel, pm25: next.pm25, tvoc: next.tvoc };
+      setByRoom((prev) => {
+        const next = { ...prev };
+        const roomIds = new Set(devices.map((d) => d.roomId));
+        roomIds.add(activeRoomId);
+        roomIds.forEach((rid) => {
+          const cur = next[rid] || DEVICE_DEFAULTS;
+          const t = nextTelemetry({ aqi: cur.aqi }, { fanSpeed: cur.fanSpeed });
+          next[rid] = { ...DEVICE_DEFAULTS, ...cur, aqi: t.aqi, aqiLabel: t.aqiLabel, pm25: t.pm25, tvoc: t.tvoc };
+        });
+        return next;
       });
     }, 3000);
     return () => clearInterval(id);
-  }, []);
+  }, [devices, activeRoomId]);
+
+  const settings = { ...DEVICE_DEFAULTS, ...(byRoom[activeRoomId] || {}), ...global };
 
   return (
     <DeviceSettingsContext.Provider value={{ settings, updateSettings }}>
@@ -3193,12 +3225,80 @@ function WatchSettings() {
   );
 }
 
+function WatchDevices() {
+  const { devices, activeRoomId, setActiveRoomId } = useRooms();
+  return (
+    <WatchFace gradient={["#39395F", "#2A1840", "#160E20"]}>
+      <Text style={{ color: pal.w70, fontSize: 11, fontWeight: "700", textAlign: "center", letterSpacing: 1 }}>DEVICES</Text>
+      {devices.length === 0 ? (
+        <Text style={{ color: pal.w55, fontSize: 11, textAlign: "center", marginTop: 8, lineHeight: 16 }}>No devices yet.{"\n"}Pair one on the phone.</Text>
+      ) : (
+        devices.map((d) => {
+          const active = d.roomId === activeRoomId;
+          return (
+            <TouchableOpacity
+              key={d.id}
+              activeOpacity={0.8}
+              onPress={() => setActiveRoomId(d.roomId)}
+              style={{ flexDirection: "row", alignItems: "center", gap: 8, borderRadius: 12, paddingHorizontal: 12, paddingVertical: 9, backgroundColor: active ? `${pal.teal}40` : "rgba(255,255,255,0.08)", borderWidth: 1, borderColor: active ? pal.teal : "rgba(255,255,255,0.12)" }}
+            >
+              <MaterialCommunityIcons name="air-purifier" size={16} color={active ? pal.teal : pal.w55} />
+              <Text style={{ color: pal.white, fontSize: 12, fontWeight: "600", flex: 1 }}>{d.roomName}</Text>
+              {active ? <Ionicons name="checkmark-circle" size={16} color={pal.teal} /> : null}
+            </TouchableOpacity>
+          );
+        })
+      )}
+    </WatchFace>
+  );
+}
+
+function WatchMode() {
+  const { settings, updateSettings } = useDeviceSettings();
+  return (
+    <WatchFace gradient={["#4AACA9", "#39395F", "#241636"]}>
+      <Text style={{ color: pal.w70, fontSize: 11, fontWeight: "700", textAlign: "center", letterSpacing: 1 }}>MODE</Text>
+      {["Sleep", "Auto", "Allergy"].map((m) => {
+        const active = settings.activeMode === m;
+        return (
+          <TouchableOpacity key={m} activeOpacity={0.8} onPress={() => updateSettings({ activeMode: m })} style={{ borderRadius: 12, paddingVertical: 10, alignItems: "center", backgroundColor: active ? pal.teal : "rgba(255,255,255,0.1)" }}>
+            <Text style={{ color: active ? "#0B1A14" : pal.white, fontWeight: "700", fontSize: 13 }}>{m}</Text>
+          </TouchableOpacity>
+        );
+      })}
+    </WatchFace>
+  );
+}
+
+function WatchTimer() {
+  const { settings, updateSettings } = useDeviceSettings();
+  return (
+    <WatchFace gradient={["#C87050", "#7A4A38", "#2A1810"]}>
+      <Text style={{ color: pal.w70, fontSize: 11, fontWeight: "700", textAlign: "center", letterSpacing: 1 }}>SHUT-OFF TIMER</Text>
+      <Text style={{ color: pal.white, fontSize: 22, fontWeight: "800", textAlign: "center" }}>{settings.timer}</Text>
+      <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 6, justifyContent: "center" }}>
+        {["Off", "30 min", "1 hour", "2 hours", "4 hours"].map((o) => {
+          const active = settings.timer === o;
+          return (
+            <TouchableOpacity key={o} activeOpacity={0.8} onPress={() => updateSettings({ timer: o })} style={{ paddingHorizontal: 10, paddingVertical: 8, borderRadius: 12, backgroundColor: active ? pal.terracotta : "rgba(255,255,255,0.12)" }}>
+              <Text style={{ color: pal.white, fontSize: 12, fontWeight: "600" }}>{o}</Text>
+            </TouchableOpacity>
+          );
+        })}
+      </View>
+    </WatchFace>
+  );
+}
+
 const WATCH_FACES = [
   { key: "home", label: "Home", Comp: WatchHome },
+  { key: "devices", label: "Devices", Comp: WatchDevices },
   { key: "air", label: "Air Quality", Comp: WatchAirQuality },
   { key: "fan", label: "Fan", Comp: WatchFan },
+  { key: "mode", label: "Mode", Comp: WatchMode },
   { key: "aroma", label: "Aroma", Comp: WatchAroma },
   { key: "filter", label: "Filter", Comp: WatchFilter },
+  { key: "timer", label: "Timer", Comp: WatchTimer },
   { key: "settings", label: "Settings", Comp: WatchSettings },
 ];
 
