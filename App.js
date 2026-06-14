@@ -1274,6 +1274,10 @@ function VerifyEmail({ navigation }) {
                 ref={(ref) => { codeRefs.current[i] = ref; }}
                 value={digit}
                 onChangeText={(text) => handleCodeChange(text, i)}
+                onFocus={() => {
+                  const target = code.findIndex((d) => d === "");
+                  if (target !== -1 && i > target) codeRefs.current[target]?.focus();
+                }}
                 keyboardType="number-pad"
                 maxLength={1}
                 style={{ color: pal.white, fontSize: 20, fontWeight: "700", textAlign: "center", width: "100%", height: "100%" }}
@@ -1400,6 +1404,10 @@ function ResetEmailSent({ navigation }) {
                 ref={(ref) => { codeRefs.current[i] = ref; }}
                 value={digit}
                 onChangeText={(text) => handleCodeChange(text, i)}
+                onFocus={() => {
+                  const target = code.findIndex((d) => d === "");
+                  if (target !== -1 && i > target) codeRefs.current[target]?.focus();
+                }}
                 keyboardType="number-pad"
                 maxLength={1}
                 style={{ color: pal.white, fontSize: 20, fontWeight: "700", textAlign: "center", width: "100%", height: "100%" }}
@@ -2738,15 +2746,21 @@ function TimerSetting({ navigation, route }) {
       {options.map((option) => (
         <SelectRow key={option} icon="timer-outline" title={option} selected={timer === option} onPress={() => setTimer(option)} />
       ))}
-      <GlassCard>
-        <Text style={{ fontSize: 11, letterSpacing: 1.5, color: pal.w55, fontWeight: "600" }}>CUSTOM</Text>
-        <GlassField
-          label="Minutes"
-          value={customMin}
-          onChangeText={(text) => setCustomMin(text.replace(/[^0-9]/g, "").slice(0, 4))}
-          placeholder="e.g. 45"
-          keyboardType="number-pad"
-        />
+      <GlassCard style={{ alignItems: "center", gap: 12 }}>
+        <Text style={{ color: pal.w55, fontSize: 11, letterSpacing: 2, textTransform: "uppercase" }}>Custom shut-off</Text>
+        <Text style={{ color: pal.w30, fontSize: 11 }}>Minutes · max 600</Text>
+        <View style={{ flexDirection: "row", alignItems: "flex-end", gap: 8 }}>
+          <TextInput
+            value={customMin}
+            onChangeText={(text) => setCustomMin(text.replace(/[^0-9]/g, "").slice(0, 3))}
+            keyboardType="number-pad"
+            placeholder="45"
+            placeholderTextColor={pal.w30}
+            selectTextOnFocus
+            style={{ color: pal.white, fontSize: 52, fontWeight: "200", letterSpacing: 2, textAlign: "center", minWidth: 100, padding: 0 }}
+          />
+          <Text style={{ color: pal.w55, fontSize: 16, paddingBottom: 10 }}>min</Text>
+        </View>
         {customMin && Number(customMin) > 0 ? (
           <GlassButton label={`Start ${customMin} min timer`} filled color={pal.terracotta} onPress={handleStartCustom} />
         ) : null}
