@@ -2768,16 +2768,17 @@ function TimerSetting({ navigation, route }) {
   const { purifier } = getDeviceTimers(deviceId);
   const purifierActive = purifier.secondsRemaining !== null && purifier.secondsRemaining > 0;
   const initialSecs = shutOffLabelToSeconds(settings.timer) ?? 0;
-  const [timer, setTimer] = useState(settings.timer);
   // The clock is editable (type your own MM:SS); a preset just seeds it.
   const [durationSeconds, setDurationSeconds] = useState(initialSecs);
   const [seed, setSeed] = useState({ seconds: initialSecs, key: 0 });
   const showToast = useToast();
   const options = ["Off", "15 min", "30 min", "45 min", "1 hour"];
+  // A preset counts as selected whenever the clock equals its duration, so
+  // typing a value that matches a preset highlights it too ("Off" === 00:00).
+  const matchedPreset = options.find((o) => (shutOffLabelToSeconds(o) ?? 0) === durationSeconds) ?? null;
 
   const selectPreset = (option) => {
     const secs = shutOffLabelToSeconds(option) ?? 0;
-    setTimer(option);
     setDurationSeconds(secs);
     setSeed((prev) => ({ seconds: secs, key: prev.key + 1 }));
   };
@@ -2794,7 +2795,7 @@ function TimerSetting({ navigation, route }) {
     <DarkScreen gradient={G_TERRACOTTA}>
       <DarkHeader title="Timer" subtitle="Schedule auto shut-off" navigation={navigation} />
       {options.map((option) => (
-        <SelectRow key={option} icon="timer-outline" title={option} selected={timer === option} onPress={() => selectPreset(option)} />
+        <SelectRow key={option} icon="timer-outline" title={option} selected={matchedPreset === option} onPress={() => selectPreset(option)} />
       ))}
       <GlassCard style={{ alignItems: "center", gap: 12 }}>
         <Text style={{ color: pal.w55, fontSize: 11, letterSpacing: 2, textTransform: "uppercase" }}>Shut-off timer</Text>
@@ -2826,7 +2827,7 @@ function TimerSetting({ navigation, route }) {
         filled
         color={pal.terracotta}
         onPress={() => {
-          updateSettings({ timer });
+          updateSettings({ timer: matchedPreset ?? "Custom" });
           showToast("Timer saved");
           navigation.goBack();
         }}
