@@ -517,7 +517,8 @@ function secondsToBuffer(total) {
 function bufferToSeconds(raw) {
   const padded = raw.padStart(4, "0").slice(-4);
   const mm = parseInt(padded.slice(0, 2), 10) || 0;
-  const ss = parseInt(padded.slice(2), 10) || 0;
+  // Seconds field is clamped to 59 so a stray entry like "7:89" can't run.
+  const ss = Math.min(59, parseInt(padded.slice(2), 10) || 0);
   return mm * 60 + ss;
 }
 
@@ -1812,7 +1813,9 @@ function formatDuration(totalSec) {
 
 function shutOffLabelToSeconds(label) {
   switch (label) {
+    case "15 min": return 15 * 60;
     case "30 min": return 30 * 60;
+    case "45 min": return 45 * 60;
     case "1 hour": return 3600;
     case "2 hours": return 7200;
     case "4 hours": return 14400;
@@ -2764,15 +2767,19 @@ function TimerSetting({ navigation, route }) {
     ?? devices.find((item) => item.status === "Active")?.id;
   const { purifier } = getDeviceTimers(deviceId);
   const purifierActive = purifier.secondsRemaining !== null && purifier.secondsRemaining > 0;
+  const initialSecs = shutOffLabelToSeconds(settings.timer) ?? 0;
   const [timer, setTimer] = useState(settings.timer);
-  // The selected preset fills this clock; the clock then drives start/stop.
-  const [durationSeconds, setDurationSeconds] = useState(shutOffLabelToSeconds(settings.timer) ?? 0);
+  // The clock is editable (type your own MM:SS); a preset just seeds it.
+  const [durationSeconds, setDurationSeconds] = useState(initialSecs);
+  const [seed, setSeed] = useState({ seconds: initialSecs, key: 0 });
   const showToast = useToast();
-  const options = ["Off", "30 min", "1 hour", "2 hours", "4 hours"];
+  const options = ["Off", "15 min", "30 min", "45 min", "1 hour"];
 
   const selectPreset = (option) => {
+    const secs = shutOffLabelToSeconds(option) ?? 0;
     setTimer(option);
-    setDurationSeconds(shutOffLabelToSeconds(option) ?? 0);
+    setDurationSeconds(secs);
+    setSeed((prev) => ({ seconds: secs, key: prev.key + 1 }));
   };
 
   const handleStart = () => {
@@ -2791,9 +2798,12 @@ function TimerSetting({ navigation, route }) {
       ))}
       <GlassCard style={{ alignItems: "center", gap: 14 }}>
         <Text style={{ color: pal.w55, fontSize: 11, letterSpacing: 2, textTransform: "uppercase" }}>Shut-off clock</Text>
-        <Text style={{ color: pal.white, fontSize: 52, fontWeight: "200", letterSpacing: 3 }}>
-          {formatDuration(purifierActive ? purifier.secondsRemaining : durationSeconds)}
-        </Text>
+        <Text style={{ color: pal.w30, fontSize: 11 }}>Tap a preset or type minutes : seconds</Text>
+        {purifierActive ? (
+          <Text style={{ color: pal.white, fontSize: 52, fontWeight: "200", letterSpacing: 3 }}>{formatDuration(purifier.secondsRemaining)}</Text>
+        ) : (
+          <TimeBoxes key={seed.key} initialSeconds={seed.seconds} onChange={setDurationSeconds} />
+        )}
         <View style={{ alignSelf: "stretch" }}>
           {purifierActive ? (
             <GlassButton label="Stop timer" filled color={pal.terracotta} onPress={handleStop} />
@@ -2802,7 +2812,7 @@ function TimerSetting({ navigation, route }) {
           )}
         </View>
         <Text style={{ color: pal.w30, fontSize: 11 }}>
-          {purifierActive ? "Counting down to shut-off…" : durationSeconds > 0 ? "Ready to start" : "Select a preset above"}
+          {purifierActive ? "Counting down to shut-off…" : durationSeconds > 0 ? "Ready to start" : "Set a duration to start"}
         </Text>
       </GlassCard>
       <GlassButton
