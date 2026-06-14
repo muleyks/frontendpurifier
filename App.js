@@ -12,6 +12,8 @@ import {
   Dimensions,
   Animated,
   Easing,
+  KeyboardAvoidingView,
+  Platform,
 } from "react-native";
 import { NavigationContainer } from "@react-navigation/native";
 import { createNativeStackNavigator } from "@react-navigation/native-stack";
@@ -163,16 +165,18 @@ function withHomeNav(ScreenComponent, routeName) {
 function DarkScreen({ children, gradient = G_NEUTRAL, padded = true, scroll = true }) {
   const isQuality = gradient === G_QUALITY || gradient === G_TERRACOTTA;
   const inner = scroll ? (
-    <ScrollView
-      contentContainerStyle={[
-        { gap: 14, paddingBottom: 32 },
-        padded && { paddingHorizontal: 22, paddingTop: 20 },
-      ]}
-      showsVerticalScrollIndicator={false}
-      keyboardShouldPersistTaps="handled"
-    >
-      {children}
-    </ScrollView>
+    <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : "height"} style={{ flex: 1 }}>
+      <ScrollView
+        contentContainerStyle={[
+          { gap: 14, paddingBottom: 32 },
+          padded && { paddingHorizontal: 22, paddingTop: 20 },
+        ]}
+        showsVerticalScrollIndicator={false}
+        keyboardShouldPersistTaps="handled"
+      >
+        {children}
+      </ScrollView>
+    </KeyboardAvoidingView>
   ) : (
     <View style={[{ flex: 1 }, padded && { paddingHorizontal: 22, paddingTop: 20 }]}>
       {children}
@@ -516,6 +520,16 @@ function DarkRow({ icon, title, value, onPress, danger }) {
       {value ? <Text style={{ color: pal.w55, fontSize: 12 }}>{value}</Text> : null}
       <Ionicons name="chevron-forward" size={15} color={pal.w30} />
     </TouchableOpacity>
+  );
+}
+
+function StatusRow({ icon, title, value, danger }) {
+  return (
+    <View style={{ minHeight: 60, borderRadius: 16, borderWidth: 1, borderColor: pal.glassBorder, backgroundColor: pal.glass, paddingHorizontal: 14, flexDirection: "row", alignItems: "center", gap: 12 }}>
+      <MaterialCommunityIcons name={icon} size={20} color={danger ? "#C84545" : pal.teal} />
+      <Text style={{ flex: 1, fontSize: 14, color: pal.w88, fontWeight: "600" }}>{title}</Text>
+      {value ? <Text style={{ color: pal.w55, fontSize: 12, fontWeight: "600" }}>{value}</Text> : null}
+    </View>
   );
 }
 
@@ -945,24 +959,47 @@ function CircleRing({ value = 0.78, size = 220, color = pal.teal, label = "", te
   );
 }
 
-function WeekChart() {
-  const points = [[10, 52], [58, 28], [110, 32], [166, 46], [216, 22], [270, 38], [310, 16]];
-  const d = `M ${points.map((p) => p.join(" ")).join(" L ")}`;
+const CHART_DATA = {
+  Day: {
+    labels: ["6", "9", "12", "15", "18", "21", "24"],
+    points: [[10, 40], [58, 30], [110, 48], [166, 26], [216, 52], [270, 34], [310, 20]],
+    trend: "Improving",
+    delta: "-8%",
+  },
+  Week: {
+    labels: ["T", "W", "T", "F", "S", "S", "M"],
+    points: [[10, 52], [58, 28], [110, 32], [166, 46], [216, 22], [270, 38], [310, 16]],
+    trend: "Steady",
+    delta: "+12%",
+  },
+  Month: {
+    labels: ["W1", "W2", "W3", "W4", "W5", "W6", "W7"],
+    points: [[10, 30], [58, 44], [110, 24], [166, 50], [216, 34], [270, 42], [310, 28]],
+    trend: "Variable",
+    delta: "+5%",
+  },
+};
+
+function WeekChart({ range = "Week" }) {
+  const data = CHART_DATA[range] || CHART_DATA.Week;
+  const d = `M ${data.points.map((p) => p.join(" ")).join(" L ")}`;
   return (
     <GlassCard>
-      <Text style={{ color: pal.w55, fontSize: 11, letterSpacing: 2.5, textAlign: "center" }}>
-        T{"   "}W{"   "}T{"   "}F{"   "}S{"   "}S{"   "}M
-      </Text>
+      <View style={{ flexDirection: "row", justifyContent: "space-between", paddingHorizontal: 6 }}>
+        {data.labels.map((label, i) => (
+          <Text key={i} style={{ color: pal.w55, fontSize: 11, letterSpacing: 1 }}>{label}</Text>
+        ))}
+      </View>
       <Svg width="100%" height={72} viewBox="0 0 320 72">
         <Path d={d} fill="none" stroke="rgba(221,215,193,0.75)" strokeWidth={2.5} strokeLinecap="round" strokeLinejoin="round" />
-        {points.map(([x, y], i) => (
+        {data.points.map(([x, y], i) => (
           <Circle key={i} cx={x} cy={y} r={3.5} fill="rgba(221,215,193,0.90)" />
         ))}
       </Svg>
       <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
         <View>
-          <Text style={{ color: pal.white, fontSize: 22, fontWeight: "700" }}>Steady</Text>
-          <Text style={{ color: pal.teal, fontSize: 12, fontWeight: "600" }}>+12%</Text>
+          <Text style={{ color: pal.white, fontSize: 22, fontWeight: "700" }}>{data.trend}</Text>
+          <Text style={{ color: pal.teal, fontSize: 12, fontWeight: "600" }}>{data.delta}</Text>
         </View>
         <TouchableOpacity style={{ flexDirection: "row", alignItems: "center", gap: 6, backgroundColor: pal.glass, paddingHorizontal: 14, paddingVertical: 8, borderRadius: 20, borderWidth: 1, borderColor: pal.glassBorder }}>
           <MaterialCommunityIcons name="air-filter" size={14} color={pal.w70} />
@@ -1327,15 +1364,39 @@ function ForgotPassword({ navigation }) {
 }
 
 function ResetEmailSent({ navigation }) {
+  const [code, setCode] = useState(["", "", "", "", "", ""]);
+  const codeRefs = useRef([]);
+
+  const handleCodeChange = (text, index) => {
+    const digit = text.replace(/[^0-9]/g, "").slice(-1);
+    const next = [...code];
+    next[index] = digit;
+    setCode(next);
+    if (digit && index < 5) codeRefs.current[index + 1]?.focus();
+  };
+
   return (
     <DarkScreen gradient={G_WARM}>
       <SuccessMark icon="mail" ombre="tealMauve" />
       <Text style={{ fontSize: 24, fontWeight: "800", color: pal.white, textAlign: "center" }}>Check your inbox</Text>
       <Text style={{ fontSize: 13, color: pal.w55, textAlign: "center" }}>
-        A reset link was sent to mesud@example.com
+        Enter the 6-digit code sent to mesud@example.com
       </Text>
-      <DarkRow icon="email-outline" title="mesud@example.com" value="Sent" />
-      <MauveOmbreButton label="Open email app" onPress={() => navigation.navigate("PasswordResetSuccess")} />
+      <View style={{ flexDirection: "row", gap: 8, justifyContent: "space-between" }}>
+        {code.map((digit, i) => (
+          <View key={i} style={{ width: (width - 44 - 40) / 6, height: 52, borderRadius: 12, borderWidth: 1, borderColor: pal.glassBorder, backgroundColor: pal.glass, alignItems: "center", justifyContent: "center" }}>
+            <TextInput
+              ref={(ref) => { codeRefs.current[i] = ref; }}
+              value={digit}
+              onChangeText={(text) => handleCodeChange(text, i)}
+              keyboardType="number-pad"
+              maxLength={1}
+              style={{ color: pal.white, fontSize: 18, fontWeight: "700", textAlign: "center", width: "100%", height: "100%" }}
+            />
+          </View>
+        ))}
+      </View>
+      <MauveOmbreButton label="Verify code" onPress={() => navigation.navigate("PasswordResetSuccess")} />
       <GlassButton label="Back to sign in" onPress={() => navigation.navigate("SignIn")} />
     </DarkScreen>
   );
@@ -1929,6 +1990,14 @@ const DEFAULT_DEVICE_SETTINGS = {
   autoActivation: true,
   sleepSchedule: "22:30 – 07:00",
   automations: DEFAULT_AUTOMATIONS,
+  aromaScent: "Lavender",
+  aromaIntensity: 0.6,
+  notifications: {
+    "Filter replacement reminder": true,
+    "Poor air quality alert": true,
+    "Device offline alert": true,
+    "Firmware update available": true,
+  },
 };
 
 const DeviceSettingsContext = createContext(null);
@@ -2139,9 +2208,9 @@ function FilterMaintenance({ navigation }) {
       <View style={{ alignItems: "center", paddingVertical: 16 }}>
         <CircleRing value={settings.hepaLife / 100} size={210} label="HEPA filter" color={pal.teal} />
       </View>
-      <DarkRow icon="air-filter" title="HEPA H13 Filter" value={`${settings.hepaLife}%`} />
-      <DarkRow icon="air-filter" title="Carbon Pre-filter" value={`${settings.carbonLife}%`} />
-      <DarkRow icon="lamp" title="UV-C Lamp" value={`${settings.uvLife}%`} danger />
+      <StatusRow icon="air-filter" title="HEPA H13 Filter" value={`${settings.hepaLife}%`} />
+      <StatusRow icon="air-filter" title="Carbon Pre-filter" value={`${settings.carbonLife}%`} />
+      <StatusRow icon="lamp" title="UV-C Lamp" value={`${settings.uvLife}%`} danger />
       <GlassButton label="Replace filter" onPress={() => navigation.navigate("ReplaceFilter")} filled />
     </DarkScreen>
   );
@@ -2194,7 +2263,7 @@ function Analytics({ navigation }) {
           );
         })}
       </View>
-      <WeekChart />
+      <WeekChart range={range} />
       <View style={{ flexDirection: "row", gap: 10 }}>
         {[["leaf", stats.best, "Best"], ["chart-line", stats.avg, "Avg"], ["alert", stats.peak, "Peak"]].map(([icon, value, label]) => (
           <View key={label} style={{ flex: 1, minHeight: 88, borderRadius: 18, borderWidth: 1, borderColor: pal.glassBorder, backgroundColor: pal.glass, alignItems: "center", justifyContent: "center", gap: 4, padding: 10 }}>
@@ -2274,7 +2343,7 @@ function Settings({ navigation }) {
 }
 
 function Aroma({ navigation, route }) {
-  const { settings } = useDeviceSettings();
+  const { settings, updateSettings } = useDeviceSettings();
   const { devices, activeRoom } = useRooms();
   const { startTimer, pauseTimer, resumeTimer, getDeviceTimers } = useDeviceTimers();
   const deviceId =
@@ -2293,8 +2362,8 @@ function Aroma({ navigation, route }) {
     { label: "Medium", iconSize: 20, val: 0.6 },
     { label: "Most", iconSize: 26, val: 1.0 },
   ];
-  const [selectedAroma, setSelectedAroma] = useState("Lavender");
-  const [intensity, setIntensity] = useState(0.6);
+  const [selectedAroma, setSelectedAroma] = useState(settings.aromaScent ?? "Lavender");
+  const [intensity, setIntensity] = useState(settings.aromaIntensity ?? 0.6);
   const [durationInput, setDurationInput] = useState("03:00");
 
   const parseDurationInput = (text) => {
@@ -2350,6 +2419,7 @@ function Aroma({ navigation, route }) {
   };
 
   const handleSave = () => {
+    updateSettings({ aromaScent: selectedAroma, aromaIntensity: intensity });
     navigation.goBack();
   };
 
@@ -2357,6 +2427,7 @@ function Aroma({ navigation, route }) {
     <LinearGradient colors={G_TERRACOTTA} locations={[0, 0.5, 1]} style={{ flex: 1 }} start={{ x: 0.05, y: 0 }} end={{ x: 0.95, y: 1 }}>
       <SafeAreaView style={{ flex: 1 }}>
         <StatusBar barStyle="light-content" />
+        <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : "height"} style={{ flex: 1 }}>
         <ScrollView contentContainerStyle={{ paddingHorizontal: 22, paddingTop: 20, paddingBottom: 40, gap: 16 }} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
           <DarkHeader title="Aroma" subtitle="Scent, timer & cartridge" navigation={navigation} />
 
@@ -2451,6 +2522,7 @@ function Aroma({ navigation, route }) {
 
           <GlassButton label="Save settings" onPress={handleSave} filled color={pal.burgundy} />
         </ScrollView>
+        </KeyboardAvoidingView>
       </SafeAreaView>
     </LinearGradient>
   );
@@ -2679,9 +2751,9 @@ function DeviceFilterMaintenance({ navigation }) {
         <Text style={{ fontSize: 14, color: pal.w55, textAlign: "center" }}>HEPA H13 filter life remaining</Text>
         <ProgressBar value={settings.hepaLife / 100} color={pal.teal} />
       </GlassCard>
-      <DarkRow icon="air-filter" title="HEPA H13 Filter" value={`${settings.hepaLife}%`} />
-      <DarkRow icon="air-filter" title="Carbon Pre-filter" value={`${settings.carbonLife}%`} />
-      <DarkRow icon="lamp" title="UV-C Lamp" value={`${settings.uvLife}%`} />
+      <StatusRow icon="air-filter" title="HEPA H13 Filter" value={`${settings.hepaLife}%`} />
+      <StatusRow icon="air-filter" title="Carbon Pre-filter" value={`${settings.carbonLife}%`} />
+      <StatusRow icon="lamp" title="UV-C Lamp" value={`${settings.uvLife}%`} />
       <GlassButton label="Back to settings" onPress={() => navigation.navigate("DeviceSettings")} />
     </DarkScreen>
   );
@@ -2809,9 +2881,9 @@ const NOTIFICATION_ITEMS = [
 ];
 
 function Notifications({ navigation }) {
-  const [enabled, setEnabled] = useState(() =>
-    NOTIFICATION_ITEMS.reduce((acc, item) => ({ ...acc, [item]: true }), {})
-  );
+  const { settings, updateSettings } = useDeviceSettings();
+  const toggle = (item) =>
+    updateSettings({ notifications: { ...settings.notifications, [item]: !settings.notifications[item] } });
 
   return (
     <DarkScreen gradient={G_TERRACOTTA}>
@@ -2820,9 +2892,9 @@ function Notifications({ navigation }) {
         <View key={x} style={{ minHeight: 62, borderRadius: 16, borderWidth: 1, borderColor: pal.glassBorder, backgroundColor: pal.glass, paddingHorizontal: 14, paddingVertical: 14, flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
           <Text style={{ flex: 1, fontSize: 14, color: pal.w88, fontWeight: "600", paddingRight: 12, lineHeight: 20 }}>{x}</Text>
           <Toggle
-            on={enabled[x]}
+            on={settings.notifications[x]}
             activeColor={pal.terracotta}
-            onPress={() => setEnabled((s) => ({ ...s, [x]: !s[x] }))}
+            onPress={() => toggle(x)}
           />
         </View>
       ))}
