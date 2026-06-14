@@ -198,13 +198,13 @@ function DarkScreen({ children, gradient = G_NEUTRAL, padded = true, scroll = tr
   );
 }
 
-function DarkHeader({ title, subtitle, navigation }) {
+function DarkHeader({ title, subtitle, navigation, onBack }) {
   return (
     <View style={{ flexDirection: "row", alignItems: "center", gap: 12, marginBottom: 4 }}>
       {navigation && (
         <TouchableOpacity
           style={{ width: 36, height: 36, borderRadius: 18, backgroundColor: pal.glass, alignItems: "center", justifyContent: "center", borderWidth: 1, borderColor: pal.glassBorder }}
-          onPress={() => navigation.goBack()}
+          onPress={onBack || (() => navigation.goBack())}
         >
           <Ionicons name="chevron-back" size={18} color={pal.w88} />
         </TouchableOpacity>
@@ -1199,7 +1199,7 @@ function SignIn({ navigation }) {
 
   return (
     <DarkScreen gradient={G_WARM}>
-      <DarkHeader title="Login" subtitle="Demo account — credentials pre-filled" navigation={navigation} />
+      <DarkHeader title="Login" subtitle="Demo account — credentials pre-filled" navigation={navigation} onBack={() => navigation.navigate("AuthChoice")} />
       <GlassField label="Email" value={email} onChangeText={setEmail} placeholder="Your email" keyboardType="email-address" />
       <GlassField label="Password" value={password} onChangeText={setPassword} placeholder="Password" secure />
       <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
@@ -1225,7 +1225,7 @@ function CreateAccount({ navigation }) {
 
   return (
     <DarkScreen gradient={G_WARM}>
-      <DarkHeader title="Create Account" subtitle="Enter your email to sign up" navigation={navigation} />
+      <DarkHeader title="Create Account" subtitle="Enter your email to sign up" navigation={navigation} onBack={() => navigation.navigate("AuthChoice")} />
       <Text style={{ color: pal.khaki, fontSize: 13, fontWeight: "600", letterSpacing: 2, textAlign: "center", marginVertical: 8 }}>
         VESTEL AIR PURIFIER
       </Text>
@@ -1558,7 +1558,7 @@ function PlacePurifier({ navigation }) {
 }
 
 function DeviceCard({ device, navigation, compact = false }) {
-  const { activeRoomId, setActiveRoomId, removeDevice, disconnectDevice, connectDevice } = useRooms();
+  const { activeRoomId, setActiveRoomId, removeDevice } = useRooms();
   const isActive = device.roomId === activeRoomId && device.status !== "Disconnected";
 
   return (
@@ -1590,9 +1590,7 @@ function DeviceCard({ device, navigation, compact = false }) {
         {!compact ? <Ionicons name="chevron-forward" size={18} color={pal.w30} /> : null}
       </TouchableOpacity>
       {!compact ? (
-        <View style={{ paddingHorizontal: 16, paddingBottom: 16, gap: 10 }}>
-          <GlassButton label="Connect Device" filled color={pal.teal} onPress={() => connectDevice(device.id)} />
-          <GlassButton label="Disconnect Device" onPress={() => disconnectDevice(device.id)} />
+        <View style={{ paddingHorizontal: 16, paddingBottom: 16 }}>
           <GlassButton label="Delete Device" onPress={() => removeDevice(device.id)} />
         </View>
       ) : null}
@@ -2339,13 +2337,14 @@ function CustomAutomation({ navigation }) {
 
 // ─── Settings & Aroma ─────────────────────────────────────────────────────────
 function Settings({ navigation }) {
+  const { settings, updateSettings } = useDeviceSettings();
   return (
     <DarkScreen gradient={G_QUALITY}>
       <View style={{ paddingTop: 8, paddingBottom: 6 }}>
         <Text style={{ color: pal.white, fontSize: 28, fontWeight: "700" }}>Settings</Text>
         <Text style={{ color: pal.w55, fontSize: 13, marginTop: 4 }}>App and device preferences</Text>
       </View>
-      <DarkRow icon="brightness-6" title="Display" onPress={() => {}} />
+      <DarkRow icon="brightness-6" title="Display" value={settings.ledOn ? "LED on" : "LED off"} onPress={() => updateSettings({ ledOn: !settings.ledOn })} />
       <DarkRow icon="bell-outline" title="Notifications" onPress={() => navigation.navigate("Notifications")} />
       <DarkRow icon="information-outline" title="Device Management" onPress={() => navigation.navigate("DeviceManagement")} />
       <View style={{ height: 8 }} />
@@ -2783,7 +2782,7 @@ function DeviceSettings({ navigation }) {
   return (
     <DarkScreen gradient={G_TERRACOTTA}>
       <DarkHeader title="Settings" subtitle="Device preferences" navigation={navigation} />
-      <DarkRow icon="air-filter" title="Filter Maintenance" onPress={() => navigation.navigate("DeviceFilterMaintenance")} />
+      <DarkRow icon="air-filter" title="Filter Maintenance" onPress={() => navigation.navigate("FilterMaintenance")} />
       <DarkRow icon="bell-outline" title="Notifications" onPress={() => navigation.navigate("Notifications")} />
       <DarkRow icon="download" title="Firmware Update" onPress={() => navigation.navigate("FirmwareAvailable")} />
       <GlassButton label="Back to purifier" onPress={() => navigation.navigate("DeviceControl")} />
