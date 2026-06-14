@@ -24,11 +24,8 @@ WORKDIR /app
 RUN mkdir -p /app/node_modules && chown -R node:node /app
 USER node
 
-# Metro / Expo Go / web all use 8081 on SDK 54.
-EXPOSE 8081
+# Metro (8081), legacy Expo (19000-19002), Expo web (19006).
+EXPOSE 8081 19000 19001 19002 19006
 
-# Default: LAN dev server (scan the QR with Expo Go). The flags live in
-# package.json (`npm start` = expo start --go --port 8081); the launcher scripts
-# set the host LAN IP so the QR points at this machine. Tunnel is opt-in
-# (`npm run start:tunnel`).
-CMD ["npm", "start"]
+# Default: real-device preview over a tunnel (scan the QR with Expo Go).
+CMD ["npx", "expo", "start", "--tunnel"]
