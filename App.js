@@ -3195,20 +3195,50 @@ function WatchFan() {
 
 function WatchAroma() {
   const { settings, updateSettings } = useDeviceSettings();
+  const { devices, activeRoomId } = useRooms();
+  const { startTimer, pauseTimer, resumeTimer, resetTimer, getDeviceTimers } = useDeviceTimers();
+  const deviceId = devices.find((d) => d.roomId === activeRoomId)?.id ?? devices[0]?.id;
+  const { aroma } = getDeviceTimers(deviceId);
+  const running = aroma.secondsRemaining !== null;
   const scents = ["Mint", "Lavender", "Eucalyptus"];
+
   return (
     <WatchFace gradient={["#8B2535", "#4D1020", "#1A0508"]}>
       <Text style={{ color: pal.w70, fontSize: 11, fontWeight: "700", textAlign: "center", letterSpacing: 1 }}>AROMA</Text>
-      <MaterialCommunityIcons name="flower" size={32} color="#E8C9C9" style={{ alignSelf: "center" }} />
-      <Text style={{ color: "#F0DADA", fontSize: 18, fontWeight: "800", textAlign: "center" }}>{settings.aromaScent}</Text>
-      <View style={{ flexDirection: "row", justifyContent: "center", gap: 6, flexWrap: "wrap" }}>
-        {scents.map((sc) => (
-          <TouchableOpacity key={sc} onPress={() => updateSettings({ aromaScent: sc })} accessibilityRole="button" accessibilityState={{ selected: sc === settings.aromaScent }} style={{ paddingHorizontal: 8, paddingVertical: 4, borderRadius: 12, borderWidth: 1, borderColor: sc === settings.aromaScent ? "#E8C9C9" : "rgba(255,255,255,0.22)" }}>
-            <Text style={{ color: pal.white, fontSize: 10 }}>{sc}</Text>
-          </TouchableOpacity>
-        ))}
-      </View>
-      <Text style={{ color: pal.w55, fontSize: 10, textAlign: "center" }}>{settings.aromaLevel}% cartridge left</Text>
+      {running ? (
+        <>
+          <MaterialCommunityIcons name="flower" size={28} color="#E8C9C9" style={{ alignSelf: "center" }} />
+          <Text style={{ color: "#F0DADA", fontSize: 30, fontWeight: "800", textAlign: "center" }}>{formatDuration(aroma.secondsRemaining)}</Text>
+          <View style={{ flexDirection: "row", justifyContent: "center", gap: 10 }}>
+            <TouchableOpacity accessibilityRole="button" accessibilityLabel={aroma.isRunning ? "Pause diffuser" : "Resume diffuser"} onPress={() => (aroma.isRunning ? pauseTimer(deviceId, "aroma") : resumeTimer(deviceId, "aroma"))} style={{ paddingHorizontal: 16, paddingVertical: 9, borderRadius: 14, backgroundColor: "rgba(255,255,255,0.16)" }}>
+              <Ionicons name={aroma.isRunning ? "pause" : "play"} size={16} color="#fff" />
+            </TouchableOpacity>
+            <TouchableOpacity accessibilityRole="button" accessibilityLabel="Stop diffuser" onPress={() => resetTimer(deviceId, "aroma")} style={{ paddingHorizontal: 16, paddingVertical: 9, borderRadius: 14, backgroundColor: "rgba(255,255,255,0.16)" }}>
+              <Ionicons name="stop" size={16} color="#fff" />
+            </TouchableOpacity>
+          </View>
+        </>
+      ) : (
+        <>
+          <Text style={{ color: "#F0DADA", fontSize: 18, fontWeight: "800", textAlign: "center" }}>{settings.aromaScent}</Text>
+          <View style={{ flexDirection: "row", justifyContent: "center", gap: 6, flexWrap: "wrap" }}>
+            {scents.map((sc) => (
+              <TouchableOpacity key={sc} onPress={() => updateSettings({ aromaScent: sc })} accessibilityRole="button" accessibilityState={{ selected: sc === settings.aromaScent }} style={{ paddingHorizontal: 8, paddingVertical: 4, borderRadius: 12, borderWidth: 1, borderColor: sc === settings.aromaScent ? "#E8C9C9" : "rgba(255,255,255,0.22)" }}>
+                <Text style={{ color: pal.white, fontSize: 10 }}>{sc}</Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+          <Text style={{ color: pal.w55, fontSize: 10, textAlign: "center" }}>Diffuser timer</Text>
+          <View style={{ flexDirection: "row", justifyContent: "center", gap: 6 }}>
+            {[3, 5, 10].map((m) => (
+              <TouchableOpacity key={m} accessibilityRole="button" accessibilityLabel={`Start ${m} minute diffuser`} onPress={() => deviceId && startTimer(deviceId, "aroma", m * 60)} style={{ paddingHorizontal: 12, paddingVertical: 7, borderRadius: 12, backgroundColor: "rgba(255,255,255,0.14)" }}>
+                <Text style={{ color: pal.white, fontSize: 11, fontWeight: "600" }}>{m}m</Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+          <Text style={{ color: pal.w55, fontSize: 10, textAlign: "center" }}>{settings.aromaLevel}% left</Text>
+        </>
+      )}
     </WatchFace>
   );
 }
@@ -3226,9 +3256,8 @@ function WatchFilter() {
 
 function WatchSettings() {
   const { settings, updateSettings } = useDeviceSettings();
-  const onCount = Object.values(settings.notifications).filter(Boolean).length;
   const row = (label, value, onPress) => (
-    <TouchableOpacity onPress={onPress} activeOpacity={0.8} style={{ flexDirection: "row", alignItems: "center", borderRadius: 12, backgroundColor: "rgba(0,0,0,0.24)", paddingHorizontal: 12, paddingVertical: 9 }}>
+    <TouchableOpacity onPress={onPress} activeOpacity={0.8} accessibilityRole="button" accessibilityLabel={value ? `${label}, ${value}` : label} style={{ flexDirection: "row", alignItems: "center", borderRadius: 12, backgroundColor: "rgba(0,0,0,0.24)", paddingHorizontal: 12, paddingVertical: 11 }}>
       <Text style={{ color: "#fff", fontSize: 12, fontWeight: "600", flex: 1 }}>{label}</Text>
       {value ? <Text style={{ color: "rgba(255,255,255,0.7)", fontSize: 11 }}>{value}</Text> : null}
     </TouchableOpacity>
@@ -3236,7 +3265,6 @@ function WatchSettings() {
   return (
     <WatchFace gradient={["#E2DCC6", "#A9C2B5", "#4A8B7A"]}>
       {row("Display", settings.ledOn ? "On" : "Off", () => updateSettings({ ledOn: !settings.ledOn }))}
-      {row("Notifications", `${onCount}/4`, () => {})}
       {row("Device Info", "VHT-402", () => {})}
     </WatchFace>
   );
@@ -3289,20 +3317,43 @@ function WatchMode() {
 
 function WatchTimer() {
   const { settings, updateSettings } = useDeviceSettings();
+  const { devices, activeRoomId } = useRooms();
+  const { startTimer, resetTimer, getDeviceTimers } = useDeviceTimers();
+  const deviceId = devices.find((d) => d.roomId === activeRoomId)?.id ?? devices[0]?.id;
+  const { purifier } = getDeviceTimers(deviceId);
+  const running = purifier.secondsRemaining !== null && purifier.secondsRemaining > 0;
+
   return (
     <WatchFace gradient={["#C87050", "#7A4A38", "#2A1810"]}>
       <Text style={{ color: pal.w70, fontSize: 11, fontWeight: "700", textAlign: "center", letterSpacing: 1 }}>SHUT-OFF TIMER</Text>
-      <Text style={{ color: pal.white, fontSize: 22, fontWeight: "800", textAlign: "center" }}>{settings.timer}</Text>
-      <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 6, justifyContent: "center" }}>
-        {["Off", "30 min", "1 hour", "2 hours", "4 hours"].map((o) => {
-          const active = settings.timer === o;
-          return (
-            <TouchableOpacity key={o} activeOpacity={0.8} onPress={() => updateSettings({ timer: o })} accessibilityRole="button" accessibilityState={{ selected: active }} style={{ paddingHorizontal: 10, paddingVertical: 8, borderRadius: 12, backgroundColor: active ? pal.terracotta : "rgba(255,255,255,0.12)" }}>
-              <Text style={{ color: pal.white, fontSize: 12, fontWeight: "600" }}>{o}</Text>
+      {running ? (
+        <>
+          <Text style={{ color: pal.white, fontSize: 30, fontWeight: "800", textAlign: "center" }}>{formatDuration(purifier.secondsRemaining)}</Text>
+          <Text style={{ color: pal.w55, fontSize: 10, textAlign: "center" }}>Counting down…</Text>
+          <TouchableOpacity accessibilityRole="button" accessibilityLabel="Stop timer" onPress={() => resetTimer(deviceId, "purifier")} style={{ alignSelf: "center", paddingHorizontal: 18, paddingVertical: 9, borderRadius: 14, backgroundColor: "rgba(255,255,255,0.16)" }}>
+            <Text style={{ color: pal.white, fontSize: 12, fontWeight: "700" }}>Stop</Text>
+          </TouchableOpacity>
+        </>
+      ) : (
+        <>
+          <Text style={{ color: pal.white, fontSize: 20, fontWeight: "800", textAlign: "center" }}>{settings.timer}</Text>
+          <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 6, justifyContent: "center" }}>
+            {["Off", "30 min", "1 hour", "2 hours", "4 hours"].map((o) => {
+              const active = settings.timer === o;
+              return (
+                <TouchableOpacity key={o} activeOpacity={0.8} onPress={() => updateSettings({ timer: o })} accessibilityRole="button" accessibilityState={{ selected: active }} style={{ paddingHorizontal: 10, paddingVertical: 8, borderRadius: 12, backgroundColor: active ? pal.terracotta : "rgba(255,255,255,0.12)" }}>
+                  <Text style={{ color: pal.white, fontSize: 12, fontWeight: "600" }}>{o}</Text>
+                </TouchableOpacity>
+              );
+            })}
+          </View>
+          {settings.timer !== "Off" && deviceId ? (
+            <TouchableOpacity accessibilityRole="button" accessibilityLabel="Start timer" onPress={() => startTimer(deviceId, "purifier", shutOffLabelToSeconds(settings.timer))} style={{ alignSelf: "center", paddingHorizontal: 20, paddingVertical: 9, borderRadius: 14, backgroundColor: pal.terracotta }}>
+              <Text style={{ color: "#fff", fontSize: 12, fontWeight: "700" }}>Start</Text>
             </TouchableOpacity>
-          );
-        })}
-      </View>
+          ) : null}
+        </>
+      )}
     </WatchFace>
   );
 }
