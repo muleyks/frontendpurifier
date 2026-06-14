@@ -3291,41 +3291,67 @@ function WatchTimer() {
 }
 
 const WATCH_FACES = [
-  { key: "home", label: "Home", Comp: WatchHome },
-  { key: "devices", label: "Devices", Comp: WatchDevices },
-  { key: "air", label: "Air Quality", Comp: WatchAirQuality },
-  { key: "fan", label: "Fan", Comp: WatchFan },
-  { key: "mode", label: "Mode", Comp: WatchMode },
-  { key: "aroma", label: "Aroma", Comp: WatchAroma },
-  { key: "filter", label: "Filter", Comp: WatchFilter },
-  { key: "timer", label: "Timer", Comp: WatchTimer },
-  { key: "settings", label: "Settings", Comp: WatchSettings },
+  { key: "home", label: "Home", icon: "home-variant", lib: "mci", color: "#4A8B7A", Comp: WatchHome },
+  { key: "devices", label: "Devices", icon: "air-purifier", lib: "mci", color: "#9470B8", Comp: WatchDevices },
+  { key: "air", label: "Air Quality", icon: "weather-windy", lib: "mci", color: "#4AACA9", Comp: WatchAirQuality },
+  { key: "fan", label: "Fan", icon: "fan", lib: "mci", color: "#4A8B7A", Comp: WatchFan },
+  { key: "mode", label: "Mode", icon: "weather-night", lib: "mci", color: "#744C8B", Comp: WatchMode },
+  { key: "aroma", label: "Aroma", icon: "flower", lib: "mci", color: "#8B2535", Comp: WatchAroma },
+  { key: "filter", label: "Filter", icon: "air-filter", lib: "mci", color: "#C5BC8A", Comp: WatchFilter },
+  { key: "timer", label: "Timer", icon: "timer-outline", lib: "ion", color: "#C87050", Comp: WatchTimer },
+  { key: "settings", label: "Settings", icon: "cog", lib: "mci", color: "#5E9E8C", Comp: WatchSettings },
 ];
 
+function WatchBubble({ face, onOpen }) {
+  const Icon = face.lib === "ion" ? Ionicons : MaterialCommunityIcons;
+  return (
+    <TouchableOpacity activeOpacity={0.8} onPress={() => onOpen(face.key)} style={{ alignItems: "center", width: 56 }}>
+      <View style={{ width: 50, height: 50, borderRadius: 25, backgroundColor: `${face.color}55`, borderWidth: 1.5, borderColor: face.color, alignItems: "center", justifyContent: "center" }}>
+        <Icon name={face.icon} size={22} color="#fff" />
+      </View>
+      <Text style={{ color: "rgba(255,255,255,0.85)", fontSize: 9, marginTop: 2 }} numberOfLines={1}>{face.label}</Text>
+    </TouchableOpacity>
+  );
+}
+
+// Honeycomb-style hub: tap a bubble to open that setting's page.
+function WatchHub({ onOpen }) {
+  const rows = [WATCH_FACES.slice(0, 3), WATCH_FACES.slice(3, 6), WATCH_FACES.slice(6, 9)];
+  return (
+    <LinearGradient colors={["#1B2530", "#241636", "#160E20"]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={{ width: WATCH_W, height: WATCH_H }}>
+      <View style={{ flex: 1, paddingHorizontal: 8, paddingVertical: 16, justifyContent: "center", gap: 12 }}>
+        {rows.map((row, i) => (
+          <View key={i} style={{ flexDirection: "row", justifyContent: "center", gap: 6 }}>
+            {row.map((f) => <WatchBubble key={f.key} face={f} onOpen={onOpen} />)}
+          </View>
+        ))}
+      </View>
+    </LinearGradient>
+  );
+}
+
 function WatchApp() {
-  const [page, setPage] = useState(0);
+  const [view, setView] = useState("hub");
+  const current = WATCH_FACES.find((f) => f.key === view);
   return (
     <View style={{ flex: 1, backgroundColor: "#15161A", alignItems: "center", justifyContent: "center", gap: 16 }}>
       <WatchFrame>
-        <ScrollView
-          horizontal
-          pagingEnabled
-          showsHorizontalScrollIndicator={false}
-          onMomentumScrollEnd={(e) => setPage(Math.round(e.nativeEvent.contentOffset.x / WATCH_W))}
-        >
-          {WATCH_FACES.map(({ key, Comp }) => (
-            <View key={key} style={{ width: WATCH_W, height: WATCH_H }}>
-              <Comp />
-            </View>
-          ))}
-        </ScrollView>
+        {!current ? (
+          <WatchHub onOpen={setView} />
+        ) : (
+          <View style={{ flex: 1 }}>
+            <current.Comp />
+            <TouchableOpacity
+              activeOpacity={0.8}
+              onPress={() => setView("hub")}
+              style={{ position: "absolute", top: 8, left: 8, width: 30, height: 30, borderRadius: 15, backgroundColor: "rgba(0,0,0,0.45)", alignItems: "center", justifyContent: "center" }}
+            >
+              <Ionicons name="chevron-back" size={18} color="#fff" />
+            </TouchableOpacity>
+          </View>
+        )}
       </WatchFrame>
-      <View style={{ flexDirection: "row", gap: 6 }}>
-        {WATCH_FACES.map((f, i) => (
-          <View key={f.key} style={{ width: 7, height: 7, borderRadius: 4, backgroundColor: i === page ? pal.teal : "rgba(255,255,255,0.25)" }} />
-        ))}
-      </View>
-      <Text style={{ color: "rgba(255,255,255,0.45)", fontSize: 12 }}>{WATCH_FACES[page]?.label} · swipe to explore</Text>
+      <Text style={{ color: "rgba(255,255,255,0.45)", fontSize: 12 }}>{current ? current.label : "Vestel · tap a bubble"}</Text>
     </View>
   );
 }
