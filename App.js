@@ -218,19 +218,22 @@ function DarkHeader({ title, subtitle, navigation, onBack }) {
   );
 }
 
-function GlassButton({ label, onPress, filled = false, color = pal.teal }) {
+function GlassButton({ label, onPress, filled = false, color = pal.teal, disabled = false }) {
   return (
     <TouchableOpacity
       activeOpacity={0.8}
+      disabled={disabled}
       style={[
         { height: 52, borderRadius: 16, alignItems: "center", justifyContent: "center" },
         filled
           ? { backgroundColor: color }
           : { backgroundColor: pal.glass, borderWidth: 1, borderColor: pal.glassBorder },
+        disabled && { opacity: 0.4 },
       ]}
       onPress={onPress}
       accessibilityRole="button"
       accessibilityLabel={label}
+      accessibilityState={{ disabled }}
     >
       <Text style={{ color: pal.white, fontWeight: "700", fontSize: 15 }}>{label}</Text>
     </TouchableOpacity>
@@ -2754,7 +2757,7 @@ function AromaCartridge({ navigation }) {
 function TimerSetting({ navigation, route }) {
   const { settings, updateSettings } = useDeviceSettings();
   const { devices, activeRoom } = useRooms();
-  const { startTimer, getDeviceTimers } = useDeviceTimers();
+  const { startTimer, resetTimer, getDeviceTimers } = useDeviceTimers();
   const deviceId =
     route?.params?.deviceId
     ?? devices.find((item) => item.roomId === activeRoom.id)?.id
@@ -2762,47 +2765,46 @@ function TimerSetting({ navigation, route }) {
   const { purifier } = getDeviceTimers(deviceId);
   const purifierActive = purifier.secondsRemaining !== null && purifier.secondsRemaining > 0;
   const [timer, setTimer] = useState(settings.timer);
-  const [customSeconds, setCustomSeconds] = useState(0);
+  // The selected preset fills this clock; the clock then drives start/stop.
+  const [durationSeconds, setDurationSeconds] = useState(shutOffLabelToSeconds(settings.timer) ?? 0);
   const showToast = useToast();
   const options = ["Off", "30 min", "1 hour", "2 hours", "4 hours"];
 
-  const handleStartTimer = () => {
-    if (!deviceId) return;
-    const total = shutOffLabelToSeconds(timer);
-    if (total) startTimer(deviceId, "purifier", total);
+  const selectPreset = (option) => {
+    setTimer(option);
+    setDurationSeconds(shutOffLabelToSeconds(option) ?? 0);
   };
 
-  const handleStartCustom = () => {
-    if (deviceId && customSeconds > 0) startTimer(deviceId, "purifier", customSeconds);
+  const handleStart = () => {
+    if (deviceId && durationSeconds > 0) startTimer(deviceId, "purifier", durationSeconds);
+  };
+
+  const handleStop = () => {
+    if (deviceId) resetTimer(deviceId, "purifier");
   };
 
   return (
     <DarkScreen gradient={G_TERRACOTTA}>
       <DarkHeader title="Timer" subtitle="Schedule auto shut-off" navigation={navigation} />
-      <GlassCard>
-        <Text style={{ fontSize: 11, letterSpacing: 1.5, color: pal.w55, fontWeight: "600" }}>PRESET</Text>
-        <Text style={{ fontSize: 32, fontWeight: "700", color: pal.white }}>{timer}</Text>
-        {purifierActive ? (
-          <Text style={{ fontSize: 14, color: pal.w55, marginTop: 8 }}>
-            Running · {formatDuration(purifier.secondsRemaining)}
-            {purifier.isPaused ? " · Paused" : ""}
-          </Text>
-        ) : null}
-      </GlassCard>
       {options.map((option) => (
-        <SelectRow key={option} icon="timer-outline" title={option} selected={timer === option} onPress={() => setTimer(option)} />
+        <SelectRow key={option} icon="timer-outline" title={option} selected={timer === option} onPress={() => selectPreset(option)} />
       ))}
-      <GlassCard style={{ alignItems: "center", gap: 12 }}>
-        <Text style={{ color: pal.w55, fontSize: 11, letterSpacing: 2, textTransform: "uppercase" }}>Custom shut-off</Text>
-        <Text style={{ color: pal.w30, fontSize: 11 }}>Minutes : seconds</Text>
-        <TimeBoxes initialSeconds={0} onChange={setCustomSeconds} />
-        {customSeconds > 0 ? (
-          <GlassButton label={`Start ${formatDuration(customSeconds)} timer`} filled color={pal.terracotta} onPress={handleStartCustom} />
-        ) : null}
+      <GlassCard style={{ alignItems: "center", gap: 14 }}>
+        <Text style={{ color: pal.w55, fontSize: 11, letterSpacing: 2, textTransform: "uppercase" }}>Shut-off clock</Text>
+        <Text style={{ color: pal.white, fontSize: 52, fontWeight: "200", letterSpacing: 3 }}>
+          {formatDuration(purifierActive ? purifier.secondsRemaining : durationSeconds)}
+        </Text>
+        <View style={{ alignSelf: "stretch" }}>
+          {purifierActive ? (
+            <GlassButton label="Stop timer" filled color={pal.terracotta} onPress={handleStop} />
+          ) : (
+            <GlassButton label="Start timer" filled color={pal.terracotta} onPress={handleStart} disabled={durationSeconds <= 0} />
+          )}
+        </View>
+        <Text style={{ color: pal.w30, fontSize: 11 }}>
+          {purifierActive ? "Counting down to shut-off…" : durationSeconds > 0 ? "Ready to start" : "Select a preset above"}
+        </Text>
       </GlassCard>
-      {timer !== "Off" ? (
-        <GlassButton label="Start timer" filled color={pal.terracotta} onPress={handleStartTimer} />
-      ) : null}
       <GlassButton
         label="Save setting"
         filled
