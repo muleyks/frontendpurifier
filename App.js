@@ -1154,13 +1154,13 @@ function AuthChoice({ navigation }) {
 }
 
 function SignIn({ navigation }) {
-  const [rememberMe, setRememberMe] = useState(false);
-  const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
+  const [rememberMe, setRememberMe] = useState(true);
+  const [email, setEmail] = useState("mesud@example.com");
+  const [password, setPassword] = useState("Vestel1234");
 
   return (
     <DarkScreen gradient={G_WARM}>
-      <DarkHeader title="Login" subtitle="Enter your credentials" navigation={navigation} />
+      <DarkHeader title="Login" subtitle="Demo account — credentials pre-filled" navigation={navigation} />
       <GlassField label="Email" value={email} onChangeText={setEmail} placeholder="Your email" keyboardType="email-address" />
       <GlassField label="Password" value={password} onChangeText={setPassword} placeholder="Password" secure />
       <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
@@ -2523,12 +2523,18 @@ function TimerSetting({ navigation, route }) {
   const { purifier } = getDeviceTimers(deviceId);
   const purifierActive = purifier.secondsRemaining !== null && purifier.secondsRemaining > 0;
   const [timer, setTimer] = useState(settings.timer);
+  const [customMin, setCustomMin] = useState("");
   const options = ["Off", "30 min", "1 hour", "2 hours", "4 hours"];
 
   const handleStartTimer = () => {
     if (!deviceId) return;
     const total = shutOffLabelToSeconds(timer);
     if (total) startTimer(deviceId, "purifier", total);
+  };
+
+  const handleStartCustom = () => {
+    const minutes = parseInt(customMin, 10);
+    if (deviceId && minutes > 0) startTimer(deviceId, "purifier", minutes * 60);
   };
 
   return (
@@ -2547,6 +2553,19 @@ function TimerSetting({ navigation, route }) {
       {options.map((option) => (
         <SelectRow key={option} icon="timer-outline" title={option} selected={timer === option} onPress={() => setTimer(option)} />
       ))}
+      <GlassCard>
+        <Text style={{ fontSize: 11, letterSpacing: 1.5, color: pal.w55, fontWeight: "600" }}>CUSTOM</Text>
+        <GlassField
+          label="Minutes"
+          value={customMin}
+          onChangeText={(text) => setCustomMin(text.replace(/[^0-9]/g, "").slice(0, 4))}
+          placeholder="e.g. 45"
+          keyboardType="number-pad"
+        />
+        {customMin && Number(customMin) > 0 ? (
+          <GlassButton label={`Start ${customMin} min timer`} filled color={pal.terracotta} onPress={handleStartCustom} />
+        ) : null}
+      </GlassCard>
       {timer !== "Off" ? (
         <GlassButton label="Start timer" filled color={pal.terracotta} onPress={handleStartTimer} />
       ) : null}
@@ -2699,14 +2718,29 @@ function AddCustomRoom({ navigation }) {
   );
 }
 
+const NOTIFICATION_ITEMS = [
+  "Filter replacement reminder",
+  "Poor air quality alert",
+  "Device offline alert",
+  "Firmware update available",
+];
+
 function Notifications({ navigation }) {
+  const [enabled, setEnabled] = useState(() =>
+    NOTIFICATION_ITEMS.reduce((acc, item) => ({ ...acc, [item]: true }), {})
+  );
+
   return (
     <DarkScreen gradient={G_TERRACOTTA}>
       <DarkHeader title="Notifications" subtitle="Alerts and reminders" navigation={navigation} />
-      {["Filter replacement reminder", "Poor air quality alert", "Device offline alert", "Firmware update available"].map((x) => (
+      {NOTIFICATION_ITEMS.map((x) => (
         <View key={x} style={{ minHeight: 62, borderRadius: 16, borderWidth: 1, borderColor: pal.glassBorder, backgroundColor: pal.glass, paddingHorizontal: 14, paddingVertical: 14, flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
           <Text style={{ flex: 1, fontSize: 14, color: pal.w88, fontWeight: "600", paddingRight: 12, lineHeight: 20 }}>{x}</Text>
-          <Toggle />
+          <Toggle
+            on={enabled[x]}
+            activeColor={pal.terracotta}
+            onPress={() => setEnabled((s) => ({ ...s, [x]: !s[x] }))}
+          />
         </View>
       ))}
     </DarkScreen>
