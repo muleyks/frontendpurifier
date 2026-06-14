@@ -511,63 +511,64 @@ function GlassField({ label, value = "", onChangeText, placeholder, secure, keyb
   );
 }
 
-function digitsToSeconds(digits) {
-  const mm = parseInt((digits[0] || "0") + (digits[1] || "0"), 10) || 0;
-  const ss = Math.min(59, parseInt((digits[2] || "0") + (digits[3] || "0"), 10) || 0);
+function secondsToBuffer(total) {
+  const t = Math.max(0, Math.floor(total || 0));
+  const mm = Math.min(99, Math.floor(t / 60));
+  const ss = t % 60;
+  return (String(mm).padStart(2, "0") + String(ss).padStart(2, "0")).replace(/^0+(?=\d)/, "");
+}
+
+function bufferToSeconds(raw) {
+  const padded = raw.padStart(4, "0").slice(-4);
+  const mm = parseInt(padded.slice(0, 2), 10) || 0;
+  const ss = parseInt(padded.slice(2), 10) || 0;
   return mm * 60 + ss;
 }
 
-// Segmented MM:SS entry — same box / focus behaviour as the verification code.
-function TimeBoxes({ digits, setDigits }) {
-  const refs = useRef([]);
-  const firstEmpty = digits.findIndex((d) => d === "");
-  const activeIdx = firstEmpty === -1 ? 3 : firstEmpty;
+// Segmented MM:SS entry with industry "shift-from-the-right" typing (like a
+// timer app): each new digit pushes in from the right, backspace pops it off.
+// Same look as the verification-code boxes.
+function TimeBoxes({ initialSeconds = 0, onChange }) {
+  const inputRef = useRef(null);
+  const [focused, setFocused] = useState(false);
+  const [raw, setRaw] = useState(() => secondsToBuffer(initialSeconds));
 
-  const handleChange = (text, i) => {
-    const d = text.replace(/[^0-9]/g, "").slice(-1);
-    const next = [...digits];
-    next[i] = d;
-    setDigits(next);
-    if (d && i < 3) refs.current[i + 1]?.focus();
+  const update = (text) => {
+    const next = text.replace(/[^0-9]/g, "").replace(/^0+(?=\d)/, "").slice(-4);
+    setRaw(next);
+    onChange?.(bufferToSeconds(next));
   };
 
-  const handleKey = (key, i) => {
-    if (key === "Backspace" && !digits[i] && i > 0) {
-      const next = [...digits];
-      next[i - 1] = "";
-      setDigits(next);
-      refs.current[i - 1]?.focus();
-    }
-  };
+  const padded = raw.padStart(4, "0").slice(-4);
 
   const renderBox = (i) => {
-    const highlight = digits[i] !== "" || i === activeIdx;
+    const entered = i >= 4 - raw.length;
     return (
-      <View key={i} style={{ width: 48, height: 60, borderRadius: 12, borderWidth: highlight ? 1.5 : 1, borderColor: highlight ? pal.khaki : pal.glassBorder, backgroundColor: pal.glass, alignItems: "center", justifyContent: "center" }}>
-        <TextInput
-          ref={(r) => { refs.current[i] = r; }}
-          value={digits[i]}
-          onChangeText={(t) => handleChange(t, i)}
-          onKeyPress={({ nativeEvent }) => handleKey(nativeEvent.key, i)}
-          onFocus={() => {
-            const t = digits.findIndex((d) => d === "");
-            if (t !== -1 && i > t) refs.current[t]?.focus();
-          }}
-          keyboardType="number-pad"
-          maxLength={1}
-          style={{ color: pal.white, fontSize: 28, fontWeight: "700", textAlign: "center", width: "100%", height: "100%" }}
-        />
+      <View key={i} style={{ width: 48, height: 60, borderRadius: 12, borderWidth: focused ? 1.5 : 1, borderColor: focused ? pal.khaki : pal.glassBorder, backgroundColor: pal.glass, alignItems: "center", justifyContent: "center" }}>
+        <Text style={{ color: entered ? pal.white : pal.w30, fontSize: 28, fontWeight: "700" }}>{padded[i]}</Text>
       </View>
     );
   };
 
   return (
-    <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
-      {renderBox(0)}
-      {renderBox(1)}
-      <Text style={{ color: pal.w70, fontSize: 30, fontWeight: "700" }}>:</Text>
-      {renderBox(2)}
-      {renderBox(3)}
+    <View style={{ alignItems: "center" }}>
+      <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+        {renderBox(0)}
+        {renderBox(1)}
+        <Text style={{ color: pal.w70, fontSize: 30, fontWeight: "700" }}>:</Text>
+        {renderBox(2)}
+        {renderBox(3)}
+      </View>
+      <TextInput
+        ref={inputRef}
+        value={raw}
+        onChangeText={update}
+        onFocus={() => setFocused(true)}
+        onBlur={() => setFocused(false)}
+        keyboardType="number-pad"
+        caretHidden
+        style={{ position: "absolute", top: 0, left: 0, right: 0, bottom: 0, opacity: 0, textAlign: "center" }}
+      />
     </View>
   );
 }
@@ -2457,12 +2458,12 @@ function Aroma({ navigation, route }) {
   ];
   const [selectedAroma, setSelectedAroma] = useState(settings.aromaScent ?? "Lavender");
   const [intensity, setIntensity] = useState(settings.aromaIntensity ?? 0.6);
-  const [durationDigits, setDurationDigits] = useState(["0", "3", "0", "0"]);
+  const [durationSeconds, setDurationSeconds] = useState(180);
 
   const handleTimerPress = () => {
     if (!deviceId) return;
     if (secondsRemaining === null) {
-      const total = Math.max(60, digitsToSeconds(durationDigits));
+      const total = Math.max(60, durationSeconds);
       startTimer(deviceId, "aroma", total);
       return;
     }
@@ -2544,7 +2545,7 @@ function Aroma({ navigation, route }) {
             <Text style={{ color: pal.w55, fontSize: 11, letterSpacing: 2, textTransform: "uppercase" }}>Diffuser timer</Text>
             <Text style={{ color: pal.w30, fontSize: 11 }}>Session countdown · max 60 minutes</Text>
             {secondsRemaining === null ? (
-              <TimeBoxes digits={durationDigits} setDigits={setDurationDigits} />
+              <TimeBoxes initialSeconds={180} onChange={setDurationSeconds} />
             ) : (
               <Text style={{ color: pal.white, fontSize: 52, fontWeight: "200", letterSpacing: 3 }}>{formatDuration(secondsRemaining)}</Text>
             )}
@@ -2726,7 +2727,7 @@ function TimerSetting({ navigation, route }) {
   const { purifier } = getDeviceTimers(deviceId);
   const purifierActive = purifier.secondsRemaining !== null && purifier.secondsRemaining > 0;
   const [timer, setTimer] = useState(settings.timer);
-  const [customDigits, setCustomDigits] = useState(["0", "0", "0", "0"]);
+  const [customSeconds, setCustomSeconds] = useState(0);
   const options = ["Off", "30 min", "1 hour", "2 hours", "4 hours"];
 
   const handleStartTimer = () => {
@@ -2736,8 +2737,7 @@ function TimerSetting({ navigation, route }) {
   };
 
   const handleStartCustom = () => {
-    const total = digitsToSeconds(customDigits);
-    if (deviceId && total > 0) startTimer(deviceId, "purifier", total);
+    if (deviceId && customSeconds > 0) startTimer(deviceId, "purifier", customSeconds);
   };
 
   return (
@@ -2759,9 +2759,9 @@ function TimerSetting({ navigation, route }) {
       <GlassCard style={{ alignItems: "center", gap: 12 }}>
         <Text style={{ color: pal.w55, fontSize: 11, letterSpacing: 2, textTransform: "uppercase" }}>Custom shut-off</Text>
         <Text style={{ color: pal.w30, fontSize: 11 }}>Minutes : seconds</Text>
-        <TimeBoxes digits={customDigits} setDigits={setCustomDigits} />
-        {digitsToSeconds(customDigits) > 0 ? (
-          <GlassButton label={`Start ${formatDuration(digitsToSeconds(customDigits))} timer`} filled color={pal.terracotta} onPress={handleStartCustom} />
+        <TimeBoxes initialSeconds={0} onChange={setCustomSeconds} />
+        {customSeconds > 0 ? (
+          <GlassButton label={`Start ${formatDuration(customSeconds)} timer`} filled color={pal.terracotta} onPress={handleStartCustom} />
         ) : null}
       </GlassCard>
       {timer !== "Off" ? (
