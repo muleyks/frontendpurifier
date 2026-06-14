@@ -13,6 +13,7 @@ import {
   Easing,
   KeyboardAvoidingView,
   Platform,
+  PanResponder,
 } from "react-native";
 import { NavigationContainer } from "@react-navigation/native";
 import { createNativeStackNavigator } from "@react-navigation/native-stack";
@@ -3302,30 +3303,43 @@ const WATCH_FACES = [
   { key: "settings", label: "Settings", icon: "cog", lib: "mci", color: "#5E9E8C", Comp: WatchSettings },
 ];
 
-function WatchBubble({ face, onOpen }) {
+function CircleBubble({ face, size, onOpen, style }) {
   const Icon = face.lib === "ion" ? Ionicons : MaterialCommunityIcons;
   return (
-    <TouchableOpacity activeOpacity={0.8} onPress={() => onOpen(face.key)} style={{ alignItems: "center", width: 56 }}>
-      <View style={{ width: 50, height: 50, borderRadius: 25, backgroundColor: `${face.color}55`, borderWidth: 1.5, borderColor: face.color, alignItems: "center", justifyContent: "center" }}>
-        <Icon name={face.icon} size={22} color="#fff" />
-      </View>
-      <Text style={{ color: "rgba(255,255,255,0.85)", fontSize: 9, marginTop: 2 }} numberOfLines={1}>{face.label}</Text>
+    <TouchableOpacity
+      activeOpacity={0.8}
+      onPress={() => onOpen(face.key)}
+      style={[{ width: size, height: size, borderRadius: size / 2, backgroundColor: `${face.color}66`, borderWidth: 1.5, borderColor: face.color, alignItems: "center", justifyContent: "center" }, style]}
+    >
+      <Icon name={face.icon} size={size * 0.42} color="#fff" />
     </TouchableOpacity>
   );
 }
 
-// Honeycomb-style hub: tap a bubble to open that setting's page.
+// Apple-Watch-style circular hub: a center bubble + a ring of bubbles. Tap one
+// to open that setting's page.
 function WatchHub({ onOpen }) {
-  const rows = [WATCH_FACES.slice(0, 3), WATCH_FACES.slice(3, 6), WATCH_FACES.slice(6, 9)];
+  const center = WATCH_FACES[0];
+  const ring = WATCH_FACES.slice(1);
+  const cx = WATCH_W / 2;
+  const cy = WATCH_H / 2;
+  const R = 74;
+  const bubble = 46;
   return (
     <LinearGradient colors={["#1B2530", "#241636", "#160E20"]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={{ width: WATCH_W, height: WATCH_H }}>
-      <View style={{ flex: 1, paddingHorizontal: 8, paddingVertical: 16, justifyContent: "center", gap: 12 }}>
-        {rows.map((row, i) => (
-          <View key={i} style={{ flexDirection: "row", justifyContent: "center", gap: 6 }}>
-            {row.map((f) => <WatchBubble key={f.key} face={f} onOpen={onOpen} />)}
-          </View>
-        ))}
-      </View>
+      {ring.map((f, i) => {
+        const a = (i / ring.length) * 2 * Math.PI - Math.PI / 2;
+        return (
+          <CircleBubble
+            key={f.key}
+            face={f}
+            size={bubble}
+            onOpen={onOpen}
+            style={{ position: "absolute", left: cx + R * Math.cos(a) - bubble / 2, top: cy + R * Math.sin(a) - bubble / 2 }}
+          />
+        );
+      })}
+      <CircleBubble face={center} size={56} onOpen={onOpen} style={{ position: "absolute", left: cx - 28, top: cy - 28 }} />
     </LinearGradient>
   );
 }
@@ -3333,25 +3347,31 @@ function WatchHub({ onOpen }) {
 function WatchApp() {
   const [view, setView] = useState("hub");
   const current = WATCH_FACES.find((f) => f.key === view);
+
+  // Swipe horizontally on a detail face to return to the hub.
+  const pan = useRef(
+    PanResponder.create({
+      onMoveShouldSetPanResponder: (_, g) => Math.abs(g.dx) > 14 && Math.abs(g.dx) > Math.abs(g.dy),
+      onPanResponderRelease: (_, g) => {
+        if (Math.abs(g.dx) > 45) setView("hub");
+      },
+    })
+  ).current;
+
   return (
     <View style={{ flex: 1, backgroundColor: "#15161A", alignItems: "center", justifyContent: "center", gap: 16 }}>
       <WatchFrame>
         {!current ? (
           <WatchHub onOpen={setView} />
         ) : (
-          <View style={{ flex: 1 }}>
+          <View style={{ flex: 1 }} {...pan.panHandlers}>
             <current.Comp />
-            <TouchableOpacity
-              activeOpacity={0.8}
-              onPress={() => setView("hub")}
-              style={{ position: "absolute", top: 8, left: 8, width: 30, height: 30, borderRadius: 15, backgroundColor: "rgba(0,0,0,0.45)", alignItems: "center", justifyContent: "center" }}
-            >
-              <Ionicons name="chevron-back" size={18} color="#fff" />
-            </TouchableOpacity>
           </View>
         )}
       </WatchFrame>
-      <Text style={{ color: "rgba(255,255,255,0.45)", fontSize: 12 }}>{current ? current.label : "Vestel · tap a bubble"}</Text>
+      <Text style={{ color: "rgba(255,255,255,0.45)", fontSize: 12 }}>
+        {current ? `${current.label} · swipe to go back` : "Vestel · tap a bubble"}
+      </Text>
     </View>
   );
 }
