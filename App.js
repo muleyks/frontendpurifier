@@ -38,10 +38,10 @@ const pal = {
   terracotta:  "#C87050",
   burgundy:    "#8B2535",
   white:       CREAM,
-  w88:         `rgba(${CREAM_RGB},0.88)`,
-  w70:         `rgba(${CREAM_RGB},0.70)`,
-  w55:         `rgba(${CREAM_RGB},0.55)`,
-  w30:         `rgba(${CREAM_RGB},0.30)`,
+  w88:         `rgba(${CREAM_RGB},0.92)`,
+  w70:         `rgba(${CREAM_RGB},0.82)`,
+  w55:         `rgba(${CREAM_RGB},0.68)`,
+  w30:         `rgba(${CREAM_RGB},0.48)`,
   glass:       `rgba(${CREAM_RGB},0.10)`,
   glassBorder: `rgba(${CREAM_RGB},0.16)`,
 };
@@ -487,10 +487,11 @@ function TealTerracottaOmbreCard({ children, style }) {
 
 function GlassField({ label, value = "", onChangeText, placeholder, secure, keyboardType, autoCapitalize = "none", editable }) {
   const canEdit = editable ?? onChangeText != null;
+  const [focused, setFocused] = useState(false);
   return (
     <View style={{ gap: 6 }}>
-      {label ? <Text style={{ color: pal.w55, fontSize: 12, fontWeight: "600" }}>{label}</Text> : null}
-      <View style={{ height: 50, borderRadius: 14, borderWidth: 1, borderColor: pal.glassBorder, backgroundColor: pal.glass, paddingHorizontal: 14, justifyContent: "center" }}>
+      {label ? <Text style={{ color: pal.w70, fontSize: 12, fontWeight: "600" }}>{label}</Text> : null}
+      <View style={{ height: 50, borderRadius: 14, borderWidth: focused ? 1.5 : 1, borderColor: focused ? pal.khaki : pal.glassBorder, backgroundColor: pal.glass, paddingHorizontal: 14, justifyContent: "center" }}>
         <TextInput
           value={value}
           onChangeText={onChangeText}
@@ -500,8 +501,10 @@ function GlassField({ label, value = "", onChangeText, placeholder, secure, keyb
           keyboardType={keyboardType}
           autoCapitalize={autoCapitalize}
           autoCorrect={false}
-          style={{ color: pal.w88, fontSize: 14, padding: 0 }}
-          placeholderTextColor={pal.w30}
+          onFocus={() => setFocused(true)}
+          onBlur={() => setFocused(false)}
+          style={{ color: pal.w88, fontSize: 15, padding: 0 }}
+          placeholderTextColor={pal.w55}
         />
       </View>
     </View>
@@ -1262,18 +1265,22 @@ function VerifyEmail({ navigation }) {
         Enter the 6-digit code sent to your email
       </Text>
       <View style={{ flexDirection: "row", gap: 8, justifyContent: "space-between" }}>
-        {code.map((digit, i) => (
-          <View key={i} style={{ width: (width - 44 - 40) / 6, height: 52, borderRadius: 12, borderWidth: 1, borderColor: pal.glassBorder, backgroundColor: pal.glass, alignItems: "center", justifyContent: "center" }}>
-            <TextInput
-              ref={(ref) => { codeRefs.current[i] = ref; }}
-              value={digit}
-              onChangeText={(text) => handleCodeChange(text, i)}
-              keyboardType="number-pad"
-              maxLength={1}
-              style={{ color: pal.white, fontSize: 18, fontWeight: "700", textAlign: "center", width: "100%", height: "100%" }}
-            />
-          </View>
-        ))}
+        {code.map((digit, i) => {
+          const active = i === code.findIndex((d) => d === "");
+          const highlight = digit !== "" || active;
+          return (
+            <View key={i} style={{ width: (width - 44 - 40) / 6, height: 52, borderRadius: 12, borderWidth: highlight ? 1.5 : 1, borderColor: highlight ? pal.khaki : pal.glassBorder, backgroundColor: pal.glass, alignItems: "center", justifyContent: "center" }}>
+              <TextInput
+                ref={(ref) => { codeRefs.current[i] = ref; }}
+                value={digit}
+                onChangeText={(text) => handleCodeChange(text, i)}
+                keyboardType="number-pad"
+                maxLength={1}
+                style={{ color: pal.white, fontSize: 20, fontWeight: "700", textAlign: "center", width: "100%", height: "100%" }}
+              />
+            </View>
+          );
+        })}
       </View>
       <MauveOmbreButton label="Verify Email" onPress={() => navigation.navigate("CreatePassword")} />
       <GlassButton label="Send to different email" onPress={() => navigation.goBack()} />
@@ -1384,18 +1391,22 @@ function ResetEmailSent({ navigation }) {
         Enter the 6-digit code sent to mesud@example.com
       </Text>
       <View style={{ flexDirection: "row", gap: 8, justifyContent: "space-between" }}>
-        {code.map((digit, i) => (
-          <View key={i} style={{ width: (width - 44 - 40) / 6, height: 52, borderRadius: 12, borderWidth: 1, borderColor: pal.glassBorder, backgroundColor: pal.glass, alignItems: "center", justifyContent: "center" }}>
-            <TextInput
-              ref={(ref) => { codeRefs.current[i] = ref; }}
-              value={digit}
-              onChangeText={(text) => handleCodeChange(text, i)}
-              keyboardType="number-pad"
-              maxLength={1}
-              style={{ color: pal.white, fontSize: 18, fontWeight: "700", textAlign: "center", width: "100%", height: "100%" }}
-            />
-          </View>
-        ))}
+        {code.map((digit, i) => {
+          const active = i === code.findIndex((d) => d === "");
+          const highlight = digit !== "" || active;
+          return (
+            <View key={i} style={{ width: (width - 44 - 40) / 6, height: 52, borderRadius: 12, borderWidth: highlight ? 1.5 : 1, borderColor: highlight ? pal.khaki : pal.glassBorder, backgroundColor: pal.glass, alignItems: "center", justifyContent: "center" }}>
+              <TextInput
+                ref={(ref) => { codeRefs.current[i] = ref; }}
+                value={digit}
+                onChangeText={(text) => handleCodeChange(text, i)}
+                keyboardType="number-pad"
+                maxLength={1}
+                style={{ color: pal.white, fontSize: 20, fontWeight: "700", textAlign: "center", width: "100%", height: "100%" }}
+              />
+            </View>
+          );
+        })}
       </View>
       <MauveOmbreButton label="Verify code" onPress={() => navigation.navigate("PasswordResetSuccess")} />
       <GlassButton label="Back to sign in" onPress={() => navigation.navigate("SignIn")} />
