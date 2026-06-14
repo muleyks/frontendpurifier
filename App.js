@@ -3221,7 +3221,6 @@ function WatchAroma() {
   const running = aroma.secondsRemaining !== null;
   const scents = ["Mint", "Lavender", "Eucalyptus"];
   const [pendingMin, setPendingMin] = useState(5);
-  const showToast = useToast();
 
   return (
     <WatchFace gradient={["#8B2535", "#4D1020", "#1A0508"]}>
@@ -3267,7 +3266,6 @@ function WatchAroma() {
             onPress={() => {
               if (!deviceId) return;
               startTimer(deviceId, "aroma", pendingMin * 60);
-              showToast("Diffuser started");
             }}
             style={{ alignSelf: "center", paddingHorizontal: 18, paddingVertical: 9, borderRadius: 14, backgroundColor: "#B0656B" }}
           >
@@ -3358,7 +3356,6 @@ function WatchTimer() {
   const deviceId = devices.find((d) => d.roomId === activeRoomId)?.id ?? devices[0]?.id;
   const { purifier } = getDeviceTimers(deviceId);
   const running = purifier.secondsRemaining !== null && purifier.secondsRemaining > 0;
-  const showToast = useToast();
 
   return (
     <WatchFace gradient={["#C87050", "#7A4A38", "#2A1810"]}>
@@ -3388,7 +3385,7 @@ function WatchTimer() {
             })}
           </View>
           {settings.timer !== "Off" && deviceId ? (
-            <TouchableOpacity accessibilityRole="button" accessibilityLabel="Start timer" onPress={() => { startTimer(deviceId, "purifier", shutOffLabelToSeconds(settings.timer)); showToast("Timer started"); }} style={{ alignSelf: "center", paddingHorizontal: 20, paddingVertical: 9, borderRadius: 14, backgroundColor: pal.terracotta }}>
+            <TouchableOpacity accessibilityRole="button" accessibilityLabel="Start timer" onPress={() => { startTimer(deviceId, "purifier", shutOffLabelToSeconds(settings.timer)); }} style={{ alignSelf: "center", paddingHorizontal: 20, paddingVertical: 9, borderRadius: 14, backgroundColor: pal.terracotta }}>
               <Text style={{ color: "#fff", fontSize: 12, fontWeight: "700" }}>Start</Text>
             </TouchableOpacity>
           ) : null}
@@ -3516,8 +3513,8 @@ function ModeSwitch({ mode, onChange }) {
     </TouchableOpacity>
   );
   return (
-    <SafeAreaView pointerEvents="box-none" style={{ position: "absolute", left: 0, right: 0, bottom: 0, alignItems: "center" }}>
-      <View style={{ flexDirection: "row", marginBottom: 14, padding: 4, borderRadius: 22, backgroundColor: "rgba(10,10,12,0.82)", borderWidth: 1, borderColor: "rgba(255,255,255,0.12)" }}>
+    <SafeAreaView pointerEvents="box-none" style={{ position: "absolute", left: 0, right: 0, top: 0, alignItems: "center" }}>
+      <View style={{ flexDirection: "row", marginTop: 8, padding: 4, borderRadius: 22, backgroundColor: "rgba(10,10,12,0.82)", borderWidth: 1, borderColor: "rgba(255,255,255,0.12)" }}>
         {opt("phone", "Phone")}
         {opt("watch", "Watch")}
       </View>
