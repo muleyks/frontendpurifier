@@ -1,5 +1,6 @@
-import React, { useRef, useEffect, useState, createContext, useContext } from "react";
-import { nextTelemetry } from "./src/sim/telemetry";
+import React, { useRef, useEffect, useState, createContext, useContext, useCallback } from "react";
+import { nextTelemetry, aqiInfo } from "./src/sim/telemetry";
+import { isValidEmail, isValidOtp } from "./src/lib/validation";
 import {
   ScrollView,
   StyleSheet,
@@ -13,6 +14,9 @@ import {
   Easing,
   KeyboardAvoidingView,
   Platform,
+  PanResponder,
+  AccessibilityInfo,
+  Alert,
 } from "react-native";
 import { NavigationContainer } from "@react-navigation/native";
 import { createNativeStackNavigator } from "@react-navigation/native-stack";
@@ -27,8 +31,6 @@ const { width, height } = Dimensions.get("window");
 // ─── Palette (from design images) ────────────────────────────────────────────
 const CREAM = "#DDD7C1";
 const CREAM_RGB = "221,215,193";
-const FAN_CREAM_RGB = CREAM_RGB;
-const FAN_HUB = CREAM;
 
 const pal = {
   teal:        "#4A8B7A",
@@ -55,10 +57,6 @@ const G_WARM     = ["#7A6E50", "#3C2E18", "#160E04"];
 const G_BURGUNDY = ["#8B2535", "#4D1020", "#1A0508"];
 // G_NEUTRAL: Settings, Firmware, Pairing — dark neutral
 const G_NEUTRAL  = ["#303830", "#161E18", "#060908"];
-// G_PURPLE: Optional accent
-const G_PURPLE   = ["#5C3870", "#2E1840", "#120A1C"];
-// G_AUTH: AuthChoice — teal → mauve → deep purple
-const G_AUTH     = [pal.teal, pal.mauve, "#743058"];
 // G_MAUVE: Dashboard Welcome Home — soft mauve depth
 const G_MAUVE    = ["#C4A8A8", pal.mauve, "#3D2838"];
 // G_QUALITY: Air Quality & Filter — terracotta → teal → dusty mauve
@@ -205,6 +203,9 @@ function DarkHeader({ title, subtitle, navigation, onBack }) {
         <TouchableOpacity
           style={{ width: 36, height: 36, borderRadius: 18, backgroundColor: pal.glass, alignItems: "center", justifyContent: "center", borderWidth: 1, borderColor: pal.glassBorder }}
           onPress={onBack || (() => navigation.goBack())}
+          accessibilityRole="button"
+          accessibilityLabel="Go back"
+          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
         >
           <Ionicons name="chevron-back" size={18} color={pal.w88} />
         </TouchableOpacity>
@@ -217,17 +218,22 @@ function DarkHeader({ title, subtitle, navigation, onBack }) {
   );
 }
 
-function GlassButton({ label, onPress, filled = false, color = pal.teal }) {
+function GlassButton({ label, onPress, filled = false, color = pal.teal, disabled = false }) {
   return (
     <TouchableOpacity
       activeOpacity={0.8}
+      disabled={disabled}
       style={[
         { height: 52, borderRadius: 16, alignItems: "center", justifyContent: "center" },
         filled
           ? { backgroundColor: color }
           : { backgroundColor: pal.glass, borderWidth: 1, borderColor: pal.glassBorder },
+        disabled && { opacity: 0.4 },
       ]}
       onPress={onPress}
+      accessibilityRole="button"
+      accessibilityLabel={label}
+      accessibilityState={{ disabled }}
     >
       <Text style={{ color: pal.white, fontWeight: "700", fontSize: 15 }}>{label}</Text>
     </TouchableOpacity>
@@ -246,7 +252,7 @@ function MauveOmbreButton({ label, onPress }) {
         end={{ x: 0.5, y: 0 }}
         style={{ borderRadius: 26, paddingTop: 14, paddingBottom: 2, paddingHorizontal: 2 }}
       >
-        <TouchableOpacity activeOpacity={0.88} onPress={onPress}>
+        <TouchableOpacity activeOpacity={0.88} onPress={onPress} accessibilityRole="button" accessibilityLabel={label}>
           <LinearGradient
             colors={["rgba(60,46,24,0.2)", "rgba(176,141,141,0.65)", pal.mauve, "#C4A0A0"]}
             locations={[0, 0.35, 0.7, 1]}
@@ -274,6 +280,8 @@ function MauveFlatButton({ label, onPress }) {
     <TouchableOpacity
       activeOpacity={0.88}
       onPress={onPress}
+      accessibilityRole="button"
+      accessibilityLabel={label}
       style={{
         width: "100%",
         height: 52,
@@ -290,7 +298,27 @@ function MauveFlatButton({ label, onPress }) {
   );
 }
 
-function PulseGlowInviteCard({ children, ringId = "Invite", variant = "tealTerracotta", animate = true, oval = false }) {
+function useReduceMotion() {
+  const [reduce, setReduce] = useState(false);
+  useEffect(() => {
+    let mounted = true;
+    if (AccessibilityInfo.isReduceMotionEnabled) {
+      AccessibilityInfo.isReduceMotionEnabled().then((v) => mounted && setReduce(!!v));
+    }
+    const sub = AccessibilityInfo.addEventListener
+      ? AccessibilityInfo.addEventListener("reduceMotionChanged", (v) => setReduce(!!v))
+      : null;
+    return () => {
+      mounted = false;
+      if (sub && sub.remove) sub.remove();
+    };
+  }, []);
+  return reduce;
+}
+
+function PulseGlowInviteCard({ children, ringId = "Invite", variant = "tealTerracotta", animate: animateProp = true, oval = false }) {
+  const reduceMotion = useReduceMotion();
+  const animate = animateProp && !reduceMotion;
   const pulse = useRef(new Animated.Value(animate ? 0 : 1)).current;
   const ringSize = Math.min(width - 48, 320);
   const h = ringSize * (oval ? 1.22 : 1.08);
@@ -400,39 +428,6 @@ function PulseGlowInviteCard({ children, ringId = "Invite", variant = "tealTerra
   );
 }
 
-function SoftTerracottaOmbreButton({ label, onPress }) {
-  return (
-    <View style={{ width: "100%" }}>
-      <LinearGradient
-        colors={["rgba(22,14,4,0)", "rgba(176,130,110,0.08)", "rgba(176,130,110,0.22)"]}
-        locations={[0, 0.5, 1]}
-        start={{ x: 0.5, y: 1 }}
-        end={{ x: 0.5, y: 0 }}
-        style={{ borderRadius: 26, paddingTop: 14, paddingBottom: 2, paddingHorizontal: 2 }}
-      >
-        <TouchableOpacity activeOpacity={0.9} onPress={onPress}>
-          <LinearGradient
-            colors={["rgba(60,46,24,0.12)", "rgba(168,125,104,0.38)", "#A87D68", CREAM]}
-            locations={[0, 0.4, 0.72, 1]}
-            start={{ x: 0.5, y: 1 }}
-            end={{ x: 0.5, y: 0 }}
-            style={{ borderRadius: 22, padding: 2 }}
-          >
-            <LinearGradient
-              colors={["#7A5E52", "#A87D68", CREAM]}
-              start={{ x: 0.5, y: 1 }}
-              end={{ x: 0.5, y: 0 }}
-              style={{ height: 50, borderRadius: 20, alignItems: "center", justifyContent: "center" }}
-            >
-              <Text style={{ color: CREAM, fontWeight: "600", fontSize: 15, letterSpacing: 0.4 }}>{label}</Text>
-            </LinearGradient>
-          </LinearGradient>
-        </TouchableOpacity>
-      </LinearGradient>
-    </View>
-  );
-}
-
 function GlassCard({ children, style }) {
   return (
     <View style={[{ backgroundColor: pal.glass, borderRadius: 20, borderWidth: 1, borderColor: pal.glassBorder, padding: 16, gap: 10 }, style]}>
@@ -503,6 +498,7 @@ function GlassField({ label, value = "", onChangeText, placeholder, secure, keyb
           autoCorrect={false}
           onFocus={() => setFocused(true)}
           onBlur={() => setFocused(false)}
+          accessibilityLabel={label}
           style={{ color: pal.w88, fontSize: 15, padding: 0 }}
           placeholderTextColor={pal.w55}
         />
@@ -521,7 +517,8 @@ function secondsToBuffer(total) {
 function bufferToSeconds(raw) {
   const padded = raw.padStart(4, "0").slice(-4);
   const mm = parseInt(padded.slice(0, 2), 10) || 0;
-  const ss = parseInt(padded.slice(2), 10) || 0;
+  // Seconds field is clamped to 59 so a stray entry like "7:89" can't run.
+  const ss = Math.min(59, parseInt(padded.slice(2), 10) || 0);
   return mm * 60 + ss;
 }
 
@@ -579,6 +576,8 @@ function DarkRow({ icon, title, value, onPress, danger }) {
       activeOpacity={0.8}
       style={{ height: 60, borderRadius: 16, borderWidth: 1, borderColor: pal.glassBorder, backgroundColor: pal.glass, paddingHorizontal: 14, flexDirection: "row", alignItems: "center", gap: 12 }}
       onPress={onPress}
+      accessibilityRole={onPress ? "button" : "text"}
+      accessibilityLabel={value ? `${title}, ${value}` : title}
     >
       <MaterialCommunityIcons name={icon} size={20} color={danger ? "#C84545" : pal.teal} />
       <Text style={{ flex: 1, fontSize: 14, color: pal.w88, fontWeight: "600" }}>{title}</Text>
@@ -598,14 +597,21 @@ function StatusRow({ icon, title, value, danger }) {
   );
 }
 
-function Toggle({ on = true, activeColor = pal.teal, onPress }) {
+function Toggle({ on = true, activeColor = pal.teal, onPress, label }) {
   const track = (
     <View style={[{ width: 48, height: 28, borderRadius: 14, padding: 3 }, on ? { backgroundColor: activeColor } : { backgroundColor: "rgba(221,215,193,0.15)" }]}>
       <View style={[{ width: 22, height: 22, borderRadius: 11, backgroundColor: CREAM }, on ? { alignSelf: "flex-end" } : { alignSelf: "flex-start" }]} />
     </View>
   );
   return onPress ? (
-    <TouchableOpacity activeOpacity={0.85} onPress={onPress}>
+    <TouchableOpacity
+      activeOpacity={0.85}
+      onPress={onPress}
+      accessibilityRole="switch"
+      accessibilityState={{ checked: on }}
+      accessibilityLabel={label}
+      hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+    >
       {track}
     </TouchableOpacity>
   ) : (
@@ -769,40 +775,12 @@ function AuraOrb({ size = width * 0.88, variant = "warm", vivid = false }) {
   );
 }
 
-function BounceHint({ text }) {
-  const bounce = useRef(new Animated.Value(0)).current;
-
-  useEffect(() => {
-    const anim = Animated.loop(
-      Animated.sequence([
-        Animated.timing(bounce, { toValue: -5, duration: 1100, easing: Easing.inOut(Easing.sin), useNativeDriver: true }),
-        Animated.timing(bounce, { toValue: 0, duration: 1100, easing: Easing.inOut(Easing.sin), useNativeDriver: true }),
-      ])
-    );
-    anim.start();
-    return () => anim.stop();
-  }, [bounce]);
-
-  return (
-    <Animated.Text
-      style={{
-        transform: [{ translateY: bounce }],
-        color: "rgba(221,215,193,0.45)",
-        fontSize: 11,
-        letterSpacing: 1.2,
-        textAlign: "center",
-        fontStyle: "italic",
-      }}
-    >
-      {text}
-    </Animated.Text>
-  );
-}
-
 function ScrollCue({ text }) {
   const bounce = useRef(new Animated.Value(0)).current;
+  const reduceMotion = useReduceMotion();
 
   useEffect(() => {
+    if (reduceMotion) return undefined;
     const anim = Animated.loop(
       Animated.sequence([
         Animated.timing(bounce, {
@@ -821,7 +799,7 @@ function ScrollCue({ text }) {
     );
     anim.start();
     return () => anim.stop();
-  }, [bounce]);
+  }, [bounce, reduceMotion]);
 
   return (
     <Animated.View style={{ alignItems: "center", gap: 6, transform: [{ translateY: bounce }] }}>
@@ -876,6 +854,9 @@ function SelectRow({ icon, title, selected, onPress, iconLib = "ionicons" }) {
     <TouchableOpacity
       activeOpacity={0.85}
       onPress={onPress}
+      accessibilityRole="button"
+      accessibilityState={{ selected: !!selected }}
+      accessibilityLabel={title}
       style={{
         minHeight: 60,
         borderRadius: 16,
@@ -924,7 +905,7 @@ function ControlTile({ icon, iconLib = "ionicons", value, label, onPress, readOn
   }
 
   return (
-    <TouchableOpacity activeOpacity={0.85} onPress={onPress} style={style}>
+    <TouchableOpacity activeOpacity={0.85} onPress={onPress} style={style} accessibilityRole="button" accessibilityLabel={value ? `${label}, ${value}` : label}>
       {content}
     </TouchableOpacity>
   );
@@ -1261,11 +1242,13 @@ function SignIn({ navigation }) {
   const [rememberMe, setRememberMe] = useState(true);
   const [email, setEmail] = useState("mesud@example.com");
   const [password, setPassword] = useState("Vestel1234");
+  const [emailErr, setEmailErr] = useState(false);
 
   return (
     <DarkScreen gradient={G_WARM}>
       <DarkHeader title="Login" subtitle="Demo account — credentials pre-filled" navigation={navigation} onBack={() => navigation.navigate("AuthChoice")} />
-      <GlassField label="Email" value={email} onChangeText={setEmail} placeholder="Your email" keyboardType="email-address" />
+      <GlassField label="Email" value={email} onChangeText={(t) => { setEmail(t); setEmailErr(false); }} placeholder="Your email" keyboardType="email-address" />
+      {emailErr ? <Text style={{ color: "#F0A88C", fontSize: 12, marginTop: -8 }}>Enter a valid email address</Text> : null}
       <GlassField label="Password" value={password} onChangeText={setPassword} placeholder="Password" secure />
       <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
         <Toggle
@@ -1278,7 +1261,7 @@ function SignIn({ navigation }) {
           <Text style={{ color: pal.khaki, fontWeight: "700", fontSize: 12 }}>Forgot password?</Text>
         </TouchableOpacity>
       </View>
-      <MauveOmbreButton label="Log In" onPress={() => navigation.navigate("Devices")} />
+      <MauveOmbreButton label="Log In" onPress={() => (isValidEmail(email) ? navigation.navigate("Devices") : setEmailErr(true))} />
       <Text style={{ textAlign: "center", color: pal.w30, fontSize: 12 }}>or</Text>
       <GlassButton label="Continue with Google" onPress={() => navigation.navigate("Devices")} />
     </DarkScreen>
@@ -1287,6 +1270,7 @@ function SignIn({ navigation }) {
 
 function CreateAccount({ navigation }) {
   const [email, setEmail] = useState("");
+  const [emailErr, setEmailErr] = useState(false);
 
   return (
     <DarkScreen gradient={G_WARM}>
@@ -1294,8 +1278,9 @@ function CreateAccount({ navigation }) {
       <Text style={{ color: pal.khaki, fontSize: 13, fontWeight: "600", letterSpacing: 2, textAlign: "center", marginVertical: 8 }}>
         VESTEL AIR PURIFIER
       </Text>
-      <GlassField label="Email" value={email} onChangeText={setEmail} placeholder="Your email" keyboardType="email-address" />
-      <MauveOmbreButton label="Create an account" onPress={() => navigation.navigate("VerifyEmail")} />
+      <GlassField label="Email" value={email} onChangeText={(t) => { setEmail(t); setEmailErr(false); }} placeholder="Your email" keyboardType="email-address" />
+      {emailErr ? <Text style={{ color: "#F0A88C", fontSize: 12, marginTop: -8 }}>Enter a valid email address</Text> : null}
+      <MauveOmbreButton label="Create an account" onPress={() => (isValidEmail(email) ? navigation.navigate("VerifyEmail") : setEmailErr(true))} />
       <Text style={{ textAlign: "center", color: pal.w30, fontSize: 12 }}>or</Text>
       <GlassButton label="Continue with Google" onPress={() => navigation.navigate("VerifyEmail")} />
       <View style={{ flexGrow: 1, minHeight: 18 }} />
@@ -1308,6 +1293,7 @@ function CreateAccount({ navigation }) {
 
 function VerifyEmail({ navigation }) {
   const [code, setCode] = useState(["", "", "", "", "", ""]);
+  const [codeErr, setCodeErr] = useState(false);
   const codeRefs = useRef([]);
 
   const handleCodeChange = (text, index) => {
@@ -1348,7 +1334,8 @@ function VerifyEmail({ navigation }) {
           );
         })}
       </View>
-      <MauveOmbreButton label="Verify Email" onPress={() => navigation.navigate("CreatePassword")} />
+      {codeErr ? <Text style={{ color: "#F0A88C", fontSize: 12, textAlign: "center" }}>Enter the full 6-digit code</Text> : null}
+      <MauveOmbreButton label="Verify Email" onPress={() => (isValidOtp(code) ? navigation.navigate("CreatePassword") : setCodeErr(true))} />
       <GlassButton label="Send to different email" onPress={() => navigation.goBack()} />
     </DarkScreen>
   );
@@ -1672,7 +1659,15 @@ function DeviceCard({ device, navigation, compact = false }) {
       </TouchableOpacity>
       {!compact ? (
         <View style={{ paddingHorizontal: 16, paddingBottom: 16 }}>
-          <GlassButton label="Delete Device" onPress={() => removeDevice(device.id)} />
+          <GlassButton
+            label="Delete Device"
+            onPress={() =>
+              Alert.alert("Delete device?", `Remove the ${device.roomName} purifier from your account.`, [
+                { text: "Cancel", style: "cancel" },
+                { text: "Delete", style: "destructive", onPress: () => removeDevice(device.id) },
+              ])
+            }
+          />
         </View>
       ) : null}
     </View>
@@ -1818,7 +1813,9 @@ function formatDuration(totalSec) {
 
 function shutOffLabelToSeconds(label) {
   switch (label) {
+    case "15 min": return 15 * 60;
     case "30 min": return 30 * 60;
+    case "45 min": return 45 * 60;
     case "1 hour": return 3600;
     case "2 hours": return 7200;
     case "4 hours": return 14400;
@@ -2063,10 +2060,13 @@ const DEFAULT_AUTOMATIONS = [
   { id: "night", name: "Night preset", on: true },
 ];
 
-const DEFAULT_DEVICE_SETTINGS = {
+// Per-device (per-room) controllable properties.
+const DEVICE_DEFAULTS = {
   activeMode: "Sleep",
   fanSpeed: 40,
   aromaLevel: 62,
+  aromaScent: "Lavender",
+  aromaIntensity: 0.6,
   timer: "Off",
   aqi: 42,
   aqiLabel: "Good",
@@ -2079,9 +2079,13 @@ const DEFAULT_DEVICE_SETTINGS = {
   ledOn: false,
   autoActivation: true,
   sleepSchedule: "22:30 – 07:00",
+};
+
+const DEVICE_KEYS = Object.keys(DEVICE_DEFAULTS);
+
+// Account-level prefs shared across all devices.
+const GLOBAL_DEFAULTS = {
   automations: DEFAULT_AUTOMATIONS,
-  aromaScent: "Lavender",
-  aromaIntensity: 0.6,
   profileName: "Mesud Guluyev",
   profileEmail: "mesud@example.com",
   notifications: {
@@ -2095,23 +2099,48 @@ const DEFAULT_DEVICE_SETTINGS = {
 const DeviceSettingsContext = createContext(null);
 
 function DeviceSettingsProvider({ children }) {
-  const [settings, setSettings] = useState(DEFAULT_DEVICE_SETTINGS);
+  const { activeRoomId, devices } = useRooms();
+  const [global, setGlobal] = useState(GLOBAL_DEFAULTS);
+  const [byRoom, setByRoom] = useState({}); // roomId -> per-device settings
 
+  // Route each patch to per-device props vs account-level props so existing
+  // screens keep calling updateSettings(patch) unchanged — now scoped to the
+  // active device (room).
   const updateSettings = (patch) => {
-    setSettings((prev) => ({ ...prev, ...patch }));
+    const devicePatch = {};
+    const globalPatch = {};
+    Object.keys(patch).forEach((k) => {
+      if (DEVICE_KEYS.includes(k)) devicePatch[k] = patch[k];
+      else globalPatch[k] = patch[k];
+    });
+    if (Object.keys(devicePatch).length) {
+      setByRoom((prev) => ({ ...prev, [activeRoomId]: { ...DEVICE_DEFAULTS, ...prev[activeRoomId], ...devicePatch } }));
+    }
+    if (Object.keys(globalPatch).length) {
+      setGlobal((prev) => ({ ...prev, ...globalPatch }));
+    }
   };
 
-  // Live air-quality simulation: AQI/PM2.5/TVOC drift over time and are cleaned
-  // faster at higher fan speed. Screens reading settings.aqi/pm25 update live.
+  // Live air-quality simulation per device: each room's AQI drifts and is cleaned
+  // faster at its own fan speed.
   useEffect(() => {
     const id = setInterval(() => {
-      setSettings((prev) => {
-        const next = nextTelemetry({ aqi: prev.aqi }, { fanSpeed: prev.fanSpeed });
-        return { ...prev, aqi: next.aqi, aqiLabel: next.aqiLabel, pm25: next.pm25, tvoc: next.tvoc };
+      setByRoom((prev) => {
+        const next = { ...prev };
+        const roomIds = new Set(devices.map((d) => d.roomId));
+        roomIds.add(activeRoomId);
+        roomIds.forEach((rid) => {
+          const cur = next[rid] || DEVICE_DEFAULTS;
+          const t = nextTelemetry({ aqi: cur.aqi }, { fanSpeed: cur.fanSpeed });
+          next[rid] = { ...DEVICE_DEFAULTS, ...cur, aqi: t.aqi, aqiLabel: t.aqiLabel, pm25: t.pm25, tvoc: t.tvoc };
+        });
+        return next;
       });
     }, 3000);
     return () => clearInterval(id);
-  }, []);
+  }, [devices, activeRoomId]);
+
+  const settings = { ...DEVICE_DEFAULTS, ...(byRoom[activeRoomId] || {}), ...global };
 
   return (
     <DeviceSettingsContext.Provider value={{ settings, updateSettings }}>
@@ -2267,7 +2296,7 @@ function ToggleRow({ icon, title, on, onPress }) {
     <View style={{ minHeight: 60, borderRadius: 16, borderWidth: 1, borderColor: pal.glassBorder, backgroundColor: pal.glass, paddingHorizontal: 14, flexDirection: "row", alignItems: "center", gap: 12 }}>
       <MaterialCommunityIcons name={icon} size={20} color={pal.teal} />
       <Text style={{ flex: 1, fontSize: 14, color: pal.w88, fontWeight: "600" }}>{title}</Text>
-      <Toggle on={on} onPress={onPress} />
+      <Toggle on={on} onPress={onPress} label={title} />
     </View>
   );
 }
@@ -2310,6 +2339,7 @@ function FilterMaintenance({ navigation }) {
 
 function ReplaceFilter({ navigation }) {
   const { updateSettings } = useDeviceSettings();
+  const showToast = useToast();
   return (
     <DarkScreen gradient={G_TEAL}>
       <DarkHeader title="Replace Filter" subtitle="Guided workflow" navigation={navigation} />
@@ -2320,6 +2350,7 @@ function ReplaceFilter({ navigation }) {
         label="Filter replaced"
         onPress={() => {
           updateSettings({ hepaLife: 100, carbonLife: 100, uvLife: 100 });
+          showToast("Filter replaced");
           navigation.navigate("FilterMaintenance");
         }}
         filled
@@ -2459,6 +2490,7 @@ function Aroma({ navigation, route }) {
   const [selectedAroma, setSelectedAroma] = useState(settings.aromaScent ?? "Lavender");
   const [intensity, setIntensity] = useState(settings.aromaIntensity ?? 0.6);
   const [durationSeconds, setDurationSeconds] = useState(180);
+  const showToast = useToast();
 
   const handleTimerPress = () => {
     if (!deviceId) return;
@@ -2480,6 +2512,7 @@ function Aroma({ navigation, route }) {
 
   const handleSave = () => {
     updateSettings({ aromaScent: selectedAroma, aromaIntensity: intensity });
+    showToast("Aroma saved");
     navigation.goBack();
   };
 
@@ -2507,6 +2540,8 @@ function Aroma({ navigation, route }) {
                   key={a.name}
                   activeOpacity={0.85}
                   onPress={() => setSelectedAroma(a.name)}
+                  accessibilityRole="button"
+                  accessibilityState={{ selected }}
                   style={[
                     { flex: 1, alignItems: "center", paddingVertical: 20, borderRadius: 18, borderWidth: 1, gap: 8 },
                     selected
@@ -2530,6 +2565,8 @@ function Aroma({ navigation, route }) {
                   key={label}
                   activeOpacity={0.85}
                   onPress={() => setIntensity(val)}
+                  accessibilityRole="button"
+                  accessibilityState={{ selected }}
                   style={{ flexDirection: "row", alignItems: "center", gap: 14, paddingVertical: 4 }}
                 >
                   <View style={[{ width: 36, height: 36, borderRadius: 18, alignItems: "center", justifyContent: "center" }, selected && { backgroundColor: "rgba(221,215,193,0.20)" }]}>
@@ -2624,6 +2661,7 @@ function DeviceControl({ navigation, route }) {
 function ActiveMode({ navigation }) {
   const { settings, updateSettings } = useDeviceSettings();
   const [mode, setMode] = useState(settings.activeMode);
+  const showToast = useToast();
   const modes = [
     { id: "Sleep", icon: "moon" },
     { id: "Auto", icon: "sparkles" },
@@ -2647,6 +2685,7 @@ function ActiveMode({ navigation }) {
         filled
         onPress={() => {
           updateSettings({ activeMode: mode });
+          showToast("Mode saved");
           navigation.goBack();
         }}
       />
@@ -2657,6 +2696,7 @@ function ActiveMode({ navigation }) {
 function FanSpeedSetting({ navigation }) {
   const { settings, updateSettings } = useDeviceSettings();
   const [speed, setSpeed] = useState(settings.fanSpeed);
+  const showToast = useToast();
   const presets = [20, 40, 60, 80];
 
   const adjust = (delta) => {
@@ -2693,6 +2733,7 @@ function FanSpeedSetting({ navigation }) {
         filled
         onPress={() => {
           updateSettings({ fanSpeed: speed });
+          showToast("Fan speed saved");
           navigation.goBack();
         }}
       />
@@ -2719,60 +2760,75 @@ function AromaCartridge({ navigation }) {
 function TimerSetting({ navigation, route }) {
   const { settings, updateSettings } = useDeviceSettings();
   const { devices, activeRoom } = useRooms();
-  const { startTimer, getDeviceTimers } = useDeviceTimers();
+  const { startTimer, resetTimer, getDeviceTimers } = useDeviceTimers();
   const deviceId =
     route?.params?.deviceId
     ?? devices.find((item) => item.roomId === activeRoom.id)?.id
     ?? devices.find((item) => item.status === "Active")?.id;
   const { purifier } = getDeviceTimers(deviceId);
   const purifierActive = purifier.secondsRemaining !== null && purifier.secondsRemaining > 0;
-  const [timer, setTimer] = useState(settings.timer);
-  const [customSeconds, setCustomSeconds] = useState(0);
-  const options = ["Off", "30 min", "1 hour", "2 hours", "4 hours"];
+  const initialSecs = shutOffLabelToSeconds(settings.timer) ?? 0;
+  // The clock is editable (type your own MM:SS); a preset just seeds it.
+  const [durationSeconds, setDurationSeconds] = useState(initialSecs);
+  const [seed, setSeed] = useState({ seconds: initialSecs, key: 0 });
+  const showToast = useToast();
+  const options = ["Off", "15 min", "30 min", "45 min", "1 hour"];
+  // A preset counts as selected whenever the clock equals its duration, so
+  // typing a value that matches a preset highlights it too ("Off" === 00:00).
+  const matchedPreset = options.find((o) => (shutOffLabelToSeconds(o) ?? 0) === durationSeconds) ?? null;
 
-  const handleStartTimer = () => {
-    if (!deviceId) return;
-    const total = shutOffLabelToSeconds(timer);
-    if (total) startTimer(deviceId, "purifier", total);
+  const selectPreset = (option) => {
+    const secs = shutOffLabelToSeconds(option) ?? 0;
+    setDurationSeconds(secs);
+    setSeed((prev) => ({ seconds: secs, key: prev.key + 1 }));
   };
 
-  const handleStartCustom = () => {
-    if (deviceId && customSeconds > 0) startTimer(deviceId, "purifier", customSeconds);
+  const handleStart = () => {
+    if (deviceId && durationSeconds > 0) startTimer(deviceId, "purifier", durationSeconds);
+  };
+
+  const handleStop = () => {
+    if (deviceId) resetTimer(deviceId, "purifier");
   };
 
   return (
     <DarkScreen gradient={G_TERRACOTTA}>
       <DarkHeader title="Timer" subtitle="Schedule auto shut-off" navigation={navigation} />
-      <GlassCard>
-        <Text style={{ fontSize: 11, letterSpacing: 1.5, color: pal.w55, fontWeight: "600" }}>PRESET</Text>
-        <Text style={{ fontSize: 32, fontWeight: "700", color: pal.white }}>{timer}</Text>
-        {purifierActive ? (
-          <Text style={{ fontSize: 14, color: pal.w55, marginTop: 8 }}>
-            Running · {formatDuration(purifier.secondsRemaining)}
-            {purifier.isPaused ? " · Paused" : ""}
-          </Text>
-        ) : null}
-      </GlassCard>
       {options.map((option) => (
-        <SelectRow key={option} icon="timer-outline" title={option} selected={timer === option} onPress={() => setTimer(option)} />
+        <SelectRow key={option} icon="timer-outline" title={option} selected={matchedPreset === option} onPress={() => selectPreset(option)} />
       ))}
       <GlassCard style={{ alignItems: "center", gap: 12 }}>
-        <Text style={{ color: pal.w55, fontSize: 11, letterSpacing: 2, textTransform: "uppercase" }}>Custom shut-off</Text>
-        <Text style={{ color: pal.w30, fontSize: 11 }}>Minutes : seconds</Text>
-        <TimeBoxes initialSeconds={0} onChange={setCustomSeconds} />
-        {customSeconds > 0 ? (
-          <GlassButton label={`Start ${formatDuration(customSeconds)} timer`} filled color={pal.terracotta} onPress={handleStartCustom} />
-        ) : null}
+        <Text style={{ color: pal.w55, fontSize: 11, letterSpacing: 2, textTransform: "uppercase" }}>Shut-off timer</Text>
+        <Text style={{ color: pal.w30, fontSize: 11 }}>Tap a preset or type minutes : seconds</Text>
+        {purifierActive ? (
+          <Text style={{ color: pal.white, fontSize: 52, fontWeight: "200", letterSpacing: 3 }}>{formatDuration(purifier.secondsRemaining)}</Text>
+        ) : (
+          <TimeBoxes key={seed.key} initialSeconds={seed.seconds} onChange={setDurationSeconds} />
+        )}
+        <TouchableOpacity
+          activeOpacity={0.85}
+          onPress={purifierActive ? handleStop : handleStart}
+          disabled={!purifierActive && durationSeconds <= 0}
+          accessibilityRole="button"
+          accessibilityLabel={purifierActive ? "Stop timer" : "Start timer"}
+          style={[
+            { width: 52, height: 52, borderRadius: 26, backgroundColor: pal.glass, borderWidth: 1, borderColor: pal.glassBorder, alignItems: "center", justifyContent: "center" },
+            !purifierActive && durationSeconds <= 0 && { opacity: 0.4 },
+          ]}
+        >
+          <Ionicons name={purifierActive ? "stop" : "play"} size={22} color={pal.white} />
+        </TouchableOpacity>
+        <Text style={{ color: pal.w30, fontSize: 11 }}>
+          {purifierActive ? "Counting down to shut-off…" : durationSeconds > 0 ? "Tap to start countdown" : "Set a duration to start"}
+        </Text>
       </GlassCard>
-      {timer !== "Off" ? (
-        <GlassButton label="Start timer" filled color={pal.terracotta} onPress={handleStartTimer} />
-      ) : null}
       <GlassButton
         label="Save setting"
         filled
         color={pal.terracotta}
         onPress={() => {
-          updateSettings({ timer });
+          updateSettings({ timer: matchedPreset ?? "Custom" });
+          showToast("Timer saved");
           navigation.goBack();
         }}
       />
@@ -2938,6 +2994,7 @@ function Notifications({ navigation }) {
             on={settings.notifications[x]}
             activeColor={pal.terracotta}
             onPress={() => toggle(x)}
+            label={x}
           />
         </View>
       ))}
@@ -3019,13 +3076,16 @@ function UserProfile({ navigation }) {
   const { settings, updateSettings } = useDeviceSettings();
   const [name, setName] = useState(settings.profileName);
   const [email, setEmail] = useState(settings.profileEmail);
+  const showToast = useToast();
   const initial = (settings.profileName || "U").trim().charAt(0).toUpperCase() || "U";
 
-  const handleSave = () =>
+  const handleSave = () => {
     updateSettings({
       profileName: name.trim() || settings.profileName,
       profileEmail: email.trim() || settings.profileEmail,
     });
+    showToast("Profile saved");
+  };
 
   return (
     <DarkScreen gradient={G_TERRACOTTA}>
@@ -3046,7 +3106,15 @@ function UserProfile({ navigation }) {
         onPress={() => navigation.navigate("Language", { fromSettings: true })}
       />
       <GlassButton label="Save changes" filled color={pal.terracotta} onPress={handleSave} />
-      <GlassButton label="Logout" onPress={() => navigation.navigate("SignIn")} />
+      <GlassButton
+        label="Logout"
+        onPress={() =>
+          Alert.alert("Log out?", "You'll need to sign in again.", [
+            { text: "Cancel", style: "cancel" },
+            { text: "Log out", style: "destructive", onPress: () => navigation.navigate("SignIn") },
+          ])
+        }
+      />
     </DarkScreen>
   );
 }
@@ -3064,6 +3132,398 @@ const screens = {
   FirmwareAvailable, FirmwareUpdating, FirmwareComplete, UserProfile,
 };
 
+// ─── Watch Prototype (in-app Apple-Watch faces; shares the phone's state) ──────
+const WATCH_W = 198;
+const WATCH_H = 240;
+
+const watchStyles = StyleSheet.create({
+  round: { width: 44, height: 44, borderRadius: 22, backgroundColor: "rgba(255,255,255,0.14)", alignItems: "center", justifyContent: "center", borderWidth: 1, borderColor: "rgba(255,255,255,0.2)" },
+  roundTxt: { color: "#fff", fontSize: 22, fontWeight: "700" },
+});
+
+function WatchFrame({ children }) {
+  return (
+    <View style={{ width: WATCH_W + 26, height: WATCH_H + 30, borderRadius: 60, backgroundColor: "#0B0B0D", borderWidth: 2, borderColor: "#2C2C30", alignItems: "center", justifyContent: "center" }}>
+      <View style={{ width: WATCH_W, height: WATCH_H, borderRadius: 46, overflow: "hidden", backgroundColor: "#000" }}>
+        {children}
+      </View>
+      <View style={{ position: "absolute", right: -3, top: WATCH_H * 0.34, width: 7, height: 34, borderRadius: 4, backgroundColor: "#3A3A3E" }} />
+    </View>
+  );
+}
+
+function WatchFace({ gradient, children }) {
+  return (
+    <LinearGradient colors={gradient} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={{ width: WATCH_W, height: WATCH_H }}>
+      <View style={{ flex: 1, paddingHorizontal: 14, paddingVertical: 16, justifyContent: "center", gap: 6 }}>{children}</View>
+    </LinearGradient>
+  );
+}
+
+function WatchHome() {
+  const { settings } = useDeviceSettings();
+  const { activeRoom } = useRooms();
+  const info = aqiInfo(settings.aqi);
+  return (
+    <WatchFace gradient={["#E2DCC6", "#A9C2B5", "#4A8B7A"]}>
+      <Text style={{ color: "#28302C", fontSize: 17, fontWeight: "700", fontStyle: "italic", textAlign: "center" }}>Welcome Home</Text>
+      <Text style={{ color: "#28302C", fontSize: 11, textAlign: "center" }}>{activeRoom?.name ?? "Living Room"}</Text>
+      <View style={{ alignItems: "center", marginVertical: 2 }}>
+        <FanSpiral size={92} bladeColors={[info.color, info.color, info.color]} centerColor="#FFFFFF" />
+      </View>
+      <Text style={{ color: info.color, fontSize: 13, fontWeight: "800", textAlign: "center" }}>
+        {info.key === "good" ? "Air is clean" : `The air quality is ${info.label.toLowerCase()}`}
+      </Text>
+      <Text style={{ color: "#28302C", fontSize: 10, textAlign: "center" }}>PM2.5 {settings.pm25}  |  TVOC {settings.tvoc}</Text>
+    </WatchFace>
+  );
+}
+
+function WatchAirQuality() {
+  const { settings } = useDeviceSettings();
+  const info = aqiInfo(settings.aqi);
+  return (
+    <WatchFace gradient={["#2E5E63", "#39395F", "#241636"]}>
+      <Text style={{ color: pal.w70, fontSize: 11, fontWeight: "700", textAlign: "center", letterSpacing: 1 }}>AIR QUALITY</Text>
+      <Text style={{ color: pal.white, fontSize: 40, fontWeight: "800", textAlign: "center" }}>{settings.aqi}</Text>
+      <Text style={{ color: info.color, fontSize: 13, fontWeight: "700", textAlign: "center" }}>{settings.aqiLabel}</Text>
+      <Svg width={WATCH_W - 36} height={40} viewBox="0 0 160 40" style={{ alignSelf: "center", marginTop: 4 }}>
+        <Path d="M2 30 C 20 10, 40 26, 60 16 S 100 28, 120 12 S 150 22, 158 8" fill="none" stroke="rgba(221,215,193,0.8)" strokeWidth={2} strokeLinecap="round" />
+      </Svg>
+      <Text style={{ color: pal.w55, fontSize: 10, textAlign: "center" }}>PM2.5 {settings.pm25} · TVOC {settings.tvoc}</Text>
+    </WatchFace>
+  );
+}
+
+function WatchFan() {
+  const { settings, updateSettings } = useDeviceSettings();
+  const deg = Math.min(5, Math.max(1, Math.round(settings.fanSpeed / 20) || 1));
+  const setDeg = (d) => updateSettings({ fanSpeed: Math.min(100, Math.max(20, d * 20)) });
+  return (
+    <WatchFace gradient={["#4AACA9", "#39395F", "#241636"]}>
+      <Text style={{ color: pal.w70, fontSize: 11, fontWeight: "700", textAlign: "center", letterSpacing: 1 }}>FAN DEGREE</Text>
+      <View style={{ alignItems: "center" }}><FanSpiral size={66} bladeColors={[pal.white, pal.white, pal.white]} centerColor="#FFFFFF" /></View>
+      <Text style={{ color: pal.white, fontSize: 30, fontWeight: "800", textAlign: "center" }}>{deg}</Text>
+      <View style={{ flexDirection: "row", justifyContent: "center", gap: 20 }}>
+        <TouchableOpacity onPress={() => setDeg(deg - 1)} style={watchStyles.round}><Text style={watchStyles.roundTxt}>−</Text></TouchableOpacity>
+        <TouchableOpacity onPress={() => setDeg(deg + 1)} style={watchStyles.round}><Text style={watchStyles.roundTxt}>+</Text></TouchableOpacity>
+      </View>
+    </WatchFace>
+  );
+}
+
+function WatchAroma() {
+  const { settings, updateSettings } = useDeviceSettings();
+  const { devices, activeRoomId } = useRooms();
+  const { startTimer, pauseTimer, resumeTimer, resetTimer, getDeviceTimers } = useDeviceTimers();
+  const deviceId = devices.find((d) => d.roomId === activeRoomId)?.id ?? devices[0]?.id;
+  const { aroma } = getDeviceTimers(deviceId);
+  const running = aroma.secondsRemaining !== null;
+  const scents = ["Mint", "Lavender", "Eucalyptus"];
+  const [pendingMin, setPendingMin] = useState(5);
+
+  return (
+    <WatchFace gradient={["#8B2535", "#4D1020", "#1A0508"]}>
+      <Text style={{ color: pal.w70, fontSize: 11, fontWeight: "700", textAlign: "center", letterSpacing: 1 }}>AROMA</Text>
+      {running ? (
+        <>
+          <MaterialCommunityIcons name="flower" size={28} color="#E8C9C9" style={{ alignSelf: "center" }} />
+          <Text style={{ color: "#F0DADA", fontSize: 30, fontWeight: "800", textAlign: "center" }}>{formatDuration(aroma.secondsRemaining)}</Text>
+          <Text style={{ color: pal.w55, fontSize: 10, textAlign: "center" }}>{aroma.isRunning ? "Diffusing…" : "Paused"}</Text>
+          <View style={{ flexDirection: "row", justifyContent: "center", gap: 10 }}>
+            <TouchableOpacity accessibilityRole="button" accessibilityLabel={aroma.isRunning ? "Pause diffuser" : "Resume diffuser"} onPress={() => (aroma.isRunning ? pauseTimer(deviceId, "aroma") : resumeTimer(deviceId, "aroma"))} style={{ paddingHorizontal: 16, paddingVertical: 9, borderRadius: 14, backgroundColor: "rgba(255,255,255,0.16)" }}>
+              <Ionicons name={aroma.isRunning ? "pause" : "play"} size={16} color="#fff" />
+            </TouchableOpacity>
+            <TouchableOpacity accessibilityRole="button" accessibilityLabel="Stop diffuser" onPress={() => resetTimer(deviceId, "aroma")} style={{ paddingHorizontal: 16, paddingVertical: 9, borderRadius: 14, backgroundColor: "rgba(255,255,255,0.16)" }}>
+              <Ionicons name="stop" size={16} color="#fff" />
+            </TouchableOpacity>
+          </View>
+        </>
+      ) : (
+        <>
+          <Text style={{ color: "#F0DADA", fontSize: 18, fontWeight: "800", textAlign: "center" }}>{settings.aromaScent}</Text>
+          <View style={{ flexDirection: "row", justifyContent: "center", gap: 6, flexWrap: "wrap" }}>
+            {scents.map((sc) => (
+              <TouchableOpacity key={sc} onPress={() => updateSettings({ aromaScent: sc })} accessibilityRole="button" accessibilityState={{ selected: sc === settings.aromaScent }} style={{ paddingHorizontal: 8, paddingVertical: 4, borderRadius: 12, borderWidth: 1, borderColor: sc === settings.aromaScent ? "#E8C9C9" : "rgba(255,255,255,0.22)" }}>
+                <Text style={{ color: pal.white, fontSize: 10 }}>{sc}</Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+          <Text style={{ color: pal.w55, fontSize: 10, textAlign: "center" }}>Diffuser timer</Text>
+          <View style={{ flexDirection: "row", justifyContent: "center", gap: 6 }}>
+            {[3, 5, 10].map((m) => {
+              const sel = pendingMin === m;
+              return (
+                <TouchableOpacity key={m} accessibilityRole="button" accessibilityState={{ selected: sel }} accessibilityLabel={`${m} minutes`} onPress={() => setPendingMin(m)} style={{ paddingHorizontal: 12, paddingVertical: 7, borderRadius: 12, borderWidth: 1, borderColor: sel ? "#E8C9C9" : "transparent", backgroundColor: sel ? "rgba(232,201,201,0.25)" : "rgba(255,255,255,0.12)" }}>
+                  <Text style={{ color: pal.white, fontSize: 11, fontWeight: sel ? "800" : "600" }}>{m}m</Text>
+                </TouchableOpacity>
+              );
+            })}
+          </View>
+          <TouchableOpacity
+            accessibilityRole="button"
+            accessibilityLabel={`Start ${pendingMin} minute diffuser`}
+            onPress={() => {
+              if (!deviceId) return;
+              startTimer(deviceId, "aroma", pendingMin * 60);
+            }}
+            style={{ alignSelf: "center", paddingHorizontal: 18, paddingVertical: 9, borderRadius: 14, backgroundColor: "#B0656B" }}
+          >
+            <Text style={{ color: "#fff", fontSize: 12, fontWeight: "700" }}>Start {pendingMin}m</Text>
+          </TouchableOpacity>
+        </>
+      )}
+    </WatchFace>
+  );
+}
+
+function WatchFilter() {
+  const { settings } = useDeviceSettings();
+  return (
+    <WatchFace gradient={["#2E5E63", "#39395F", "#241636"]}>
+      <View style={{ alignItems: "center" }}>
+        <CircleRing value={settings.hepaLife / 100} size={134} color={pal.khaki} label="HEPA filter" />
+      </View>
+    </WatchFace>
+  );
+}
+
+function WatchSettings() {
+  const { settings, updateSettings } = useDeviceSettings();
+  const row = (label, value, onPress) => (
+    <TouchableOpacity onPress={onPress} activeOpacity={0.8} accessibilityRole="button" accessibilityLabel={value ? `${label}, ${value}` : label} style={{ flexDirection: "row", alignItems: "center", borderRadius: 12, backgroundColor: "rgba(0,0,0,0.24)", paddingHorizontal: 12, paddingVertical: 11 }}>
+      <Text style={{ color: "#fff", fontSize: 12, fontWeight: "600", flex: 1 }}>{label}</Text>
+      {value ? <Text style={{ color: "rgba(255,255,255,0.7)", fontSize: 11 }}>{value}</Text> : null}
+    </TouchableOpacity>
+  );
+  return (
+    <WatchFace gradient={["#E2DCC6", "#A9C2B5", "#4A8B7A"]}>
+      {row("Display", settings.ledOn ? "On" : "Off", () => updateSettings({ ledOn: !settings.ledOn }))}
+      {row("Device Info", "VHT-402", () => {})}
+    </WatchFace>
+  );
+}
+
+function WatchDevices() {
+  const { devices, activeRoomId, setActiveRoomId } = useRooms();
+  return (
+    <WatchFace gradient={["#39395F", "#2A1840", "#160E20"]}>
+      <Text style={{ color: pal.w70, fontSize: 11, fontWeight: "700", textAlign: "center", letterSpacing: 1 }}>DEVICES</Text>
+      {devices.length === 0 ? (
+        <Text style={{ color: pal.w55, fontSize: 11, textAlign: "center", marginTop: 8, lineHeight: 16 }}>No devices yet.{"\n"}Pair one on the phone.</Text>
+      ) : (
+        devices.map((d) => {
+          const active = d.roomId === activeRoomId;
+          return (
+            <TouchableOpacity
+              key={d.id}
+              activeOpacity={0.8}
+              onPress={() => setActiveRoomId(d.roomId)}
+              style={{ flexDirection: "row", alignItems: "center", gap: 8, borderRadius: 12, paddingHorizontal: 12, paddingVertical: 9, backgroundColor: active ? `${pal.teal}40` : "rgba(255,255,255,0.08)", borderWidth: 1, borderColor: active ? pal.teal : "rgba(255,255,255,0.12)" }}
+            >
+              <MaterialCommunityIcons name="air-purifier" size={16} color={active ? pal.teal : pal.w55} />
+              <Text style={{ color: pal.white, fontSize: 12, fontWeight: "600", flex: 1 }}>{d.roomName}</Text>
+              {active ? <Ionicons name="checkmark-circle" size={16} color={pal.teal} /> : null}
+            </TouchableOpacity>
+          );
+        })
+      )}
+    </WatchFace>
+  );
+}
+
+function WatchMode() {
+  const { settings, updateSettings } = useDeviceSettings();
+  return (
+    <WatchFace gradient={["#4AACA9", "#39395F", "#241636"]}>
+      <Text style={{ color: pal.w70, fontSize: 11, fontWeight: "700", textAlign: "center", letterSpacing: 1 }}>MODE</Text>
+      {["Sleep", "Auto", "Allergy"].map((m) => {
+        const active = settings.activeMode === m;
+        return (
+          <TouchableOpacity key={m} activeOpacity={0.8} onPress={() => updateSettings({ activeMode: m })} accessibilityRole="button" accessibilityState={{ selected: active }} style={{ borderRadius: 12, paddingVertical: 10, alignItems: "center", backgroundColor: active ? pal.teal : "rgba(255,255,255,0.1)" }}>
+            <Text style={{ color: active ? "#0B1A14" : pal.white, fontWeight: "700", fontSize: 13 }}>{m}</Text>
+          </TouchableOpacity>
+        );
+      })}
+    </WatchFace>
+  );
+}
+
+function WatchTimer() {
+  const { settings, updateSettings } = useDeviceSettings();
+  const { devices, activeRoomId } = useRooms();
+  const { startTimer, resetTimer, getDeviceTimers } = useDeviceTimers();
+  const deviceId = devices.find((d) => d.roomId === activeRoomId)?.id ?? devices[0]?.id;
+  const { purifier } = getDeviceTimers(deviceId);
+  const running = purifier.secondsRemaining !== null && purifier.secondsRemaining > 0;
+
+  return (
+    <WatchFace gradient={["#C87050", "#7A4A38", "#2A1810"]}>
+      <Text style={{ color: pal.w70, fontSize: 11, fontWeight: "700", textAlign: "center", letterSpacing: 1 }}>SHUT-OFF TIMER</Text>
+      {running ? (
+        <>
+          <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 6 }}>
+            <View style={{ width: 7, height: 7, borderRadius: 4, backgroundColor: "#6BD08A" }} />
+            <Text style={{ color: "#6BD08A", fontSize: 11, fontWeight: "700" }}>Timer running</Text>
+          </View>
+          <Text style={{ color: pal.white, fontSize: 30, fontWeight: "800", textAlign: "center" }}>{formatDuration(purifier.secondsRemaining)}</Text>
+          <TouchableOpacity accessibilityRole="button" accessibilityLabel="Stop timer" onPress={() => resetTimer(deviceId, "purifier")} style={{ alignSelf: "center", paddingHorizontal: 18, paddingVertical: 9, borderRadius: 14, backgroundColor: "rgba(255,255,255,0.16)" }}>
+            <Text style={{ color: pal.white, fontSize: 12, fontWeight: "700" }}>Stop</Text>
+          </TouchableOpacity>
+        </>
+      ) : (
+        <>
+          <Text style={{ color: pal.white, fontSize: 20, fontWeight: "800", textAlign: "center" }}>{settings.timer}</Text>
+          <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 6, justifyContent: "center" }}>
+            {["Off", "30 min", "1 hour", "2 hours", "4 hours"].map((o) => {
+              const active = settings.timer === o;
+              return (
+                <TouchableOpacity key={o} activeOpacity={0.8} onPress={() => updateSettings({ timer: o })} accessibilityRole="button" accessibilityState={{ selected: active }} style={{ paddingHorizontal: 10, paddingVertical: 8, borderRadius: 12, backgroundColor: active ? pal.terracotta : "rgba(255,255,255,0.12)" }}>
+                  <Text style={{ color: pal.white, fontSize: 12, fontWeight: "600" }}>{o}</Text>
+                </TouchableOpacity>
+              );
+            })}
+          </View>
+          {settings.timer !== "Off" && deviceId ? (
+            <TouchableOpacity accessibilityRole="button" accessibilityLabel="Start timer" onPress={() => { startTimer(deviceId, "purifier", shutOffLabelToSeconds(settings.timer)); }} style={{ alignSelf: "center", paddingHorizontal: 20, paddingVertical: 9, borderRadius: 14, backgroundColor: pal.terracotta }}>
+              <Text style={{ color: "#fff", fontSize: 12, fontWeight: "700" }}>Start</Text>
+            </TouchableOpacity>
+          ) : null}
+        </>
+      )}
+    </WatchFace>
+  );
+}
+
+const WATCH_FACES = [
+  { key: "home", label: "Home", icon: "home-variant", lib: "mci", color: "#4A8B7A", Comp: WatchHome },
+  { key: "devices", label: "Devices", icon: "air-purifier", lib: "mci", color: "#9470B8", Comp: WatchDevices },
+  { key: "air", label: "Air Quality", icon: "weather-windy", lib: "mci", color: "#4AACA9", Comp: WatchAirQuality },
+  { key: "fan", label: "Fan", icon: "fan", lib: "mci", color: "#4A8B7A", Comp: WatchFan },
+  { key: "mode", label: "Mode", icon: "weather-night", lib: "mci", color: "#744C8B", Comp: WatchMode },
+  { key: "aroma", label: "Aroma", icon: "flower", lib: "mci", color: "#8B2535", Comp: WatchAroma },
+  { key: "filter", label: "Filter", icon: "air-filter", lib: "mci", color: "#C5BC8A", Comp: WatchFilter },
+  { key: "timer", label: "Timer", icon: "timer-outline", lib: "ion", color: "#C87050", Comp: WatchTimer },
+  { key: "settings", label: "Settings", icon: "cog", lib: "mci", color: "#5E9E8C", Comp: WatchSettings },
+];
+
+function CircleBubble({ face, size, onOpen, style }) {
+  const Icon = face.lib === "ion" ? Ionicons : MaterialCommunityIcons;
+  return (
+    <TouchableOpacity
+      activeOpacity={0.8}
+      onPress={() => onOpen(face.key)}
+      accessibilityRole="button"
+      accessibilityLabel={face.label}
+      style={[{ width: size, height: size, borderRadius: size / 2, backgroundColor: `${face.color}66`, borderWidth: 1.5, borderColor: face.color, alignItems: "center", justifyContent: "center" }, style]}
+    >
+      <Icon name={face.icon} size={size * 0.42} color="#fff" />
+    </TouchableOpacity>
+  );
+}
+
+// Apple-Watch-style circular hub: a center bubble + a ring of bubbles. Tap one
+// to open that setting's page.
+function WatchHub({ onOpen }) {
+  const center = WATCH_FACES[0];
+  const ring = WATCH_FACES.slice(1);
+  const cx = WATCH_W / 2;
+  const cy = WATCH_H / 2;
+  const R = 74;
+  const bubble = 46;
+  return (
+    <LinearGradient colors={["#1B2530", "#241636", "#160E20"]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={{ width: WATCH_W, height: WATCH_H }}>
+      {ring.map((f, i) => {
+        const a = (i / ring.length) * 2 * Math.PI - Math.PI / 2;
+        return (
+          <CircleBubble
+            key={f.key}
+            face={f}
+            size={bubble}
+            onOpen={onOpen}
+            style={{ position: "absolute", left: cx + R * Math.cos(a) - bubble / 2, top: cy + R * Math.sin(a) - bubble / 2 }}
+          />
+        );
+      })}
+      <CircleBubble face={center} size={56} onOpen={onOpen} style={{ position: "absolute", left: cx - 28, top: cy - 28 }} />
+    </LinearGradient>
+  );
+}
+
+function WatchApp() {
+  const [view, setView] = useState("home"); // "home" | "hub" | <faceKey>
+  const detail = view !== "home" && view !== "hub" ? WATCH_FACES.find((f) => f.key === view) : null;
+
+  // Home: swipe up → wheel.
+  const panUp = useRef(PanResponder.create({
+    onMoveShouldSetPanResponder: (_, g) => Math.abs(g.dy) > 14 && Math.abs(g.dy) > Math.abs(g.dx),
+    onPanResponderRelease: (_, g) => { if (g.dy < -40) setView("hub"); },
+  })).current;
+  // Wheel: swipe down → home.
+  const panDown = useRef(PanResponder.create({
+    onMoveShouldSetPanResponder: (_, g) => Math.abs(g.dy) > 14 && Math.abs(g.dy) > Math.abs(g.dx),
+    onPanResponderRelease: (_, g) => { if (g.dy > 40) setView("home"); },
+  })).current;
+  // Detail: swipe → back to wheel.
+  const panBack = useRef(PanResponder.create({
+    onMoveShouldSetPanResponder: (_, g) => Math.abs(g.dx) > 14 && Math.abs(g.dx) > Math.abs(g.dy),
+    onPanResponderRelease: (_, g) => { if (Math.abs(g.dx) > 45) setView("hub"); },
+  })).current;
+
+  let content;
+  let footer;
+  if (view === "home") {
+    content = (
+      <View style={{ flex: 1 }} {...panUp.panHandlers}>
+        <WatchHome />
+        <View pointerEvents="none" style={{ position: "absolute", bottom: 6, left: 0, right: 0, alignItems: "center" }}>
+          <Ionicons name="chevron-up" size={16} color="rgba(40,48,44,0.5)" />
+        </View>
+      </View>
+    );
+    footer = "Swipe up for controls";
+  } else if (view === "hub") {
+    content = (
+      <View style={{ flex: 1 }} {...panDown.panHandlers}>
+        <WatchHub onOpen={setView} />
+      </View>
+    );
+    footer = "Tap a bubble · swipe down for home";
+  } else {
+    content = (
+      <View style={{ flex: 1 }} {...panBack.panHandlers}>
+        <detail.Comp />
+      </View>
+    );
+    footer = `${detail.label} · swipe to go back`;
+  }
+
+  return (
+    <View style={{ flex: 1, backgroundColor: "#15161A", alignItems: "center", justifyContent: "center", gap: 16 }}>
+      <WatchFrame>{content}</WatchFrame>
+      <Text style={{ color: "rgba(255,255,255,0.45)", fontSize: 12 }}>{footer}</Text>
+    </View>
+  );
+}
+
+function ModeSwitch({ mode, onChange }) {
+  const opt = (m, label) => (
+    <TouchableOpacity onPress={() => onChange(m)} activeOpacity={0.85} accessibilityRole="button" accessibilityState={{ selected: mode === m }} style={{ paddingHorizontal: 18, paddingVertical: 7, borderRadius: 16, backgroundColor: mode === m ? pal.teal : "transparent" }}>
+      <Text style={{ color: mode === m ? "#0B1A14" : "rgba(255,255,255,0.8)", fontWeight: "700", fontSize: 13 }}>{label}</Text>
+    </TouchableOpacity>
+  );
+  // Inline bar (not an overlay): it takes its own space at the top so it never
+  // covers the app. RootShell renders the app in the flex region below it.
+  return (
+    <View style={{ alignItems: "center", paddingVertical: 8, backgroundColor: "#0E0E12", borderBottomWidth: 1, borderBottomColor: "rgba(255,255,255,0.06)" }}>
+      <View style={{ flexDirection: "row", padding: 4, borderRadius: 20, backgroundColor: "rgba(255,255,255,0.07)", borderWidth: 1, borderColor: "rgba(255,255,255,0.12)" }}>
+        {opt("phone", "Phone")}
+        {opt("watch", "Watch")}
+      </View>
+    </View>
+  );
+}
+
 function AppNavigator() {
   return (
     <NavigationContainer>
@@ -3076,19 +3536,84 @@ function AppNavigator() {
   );
 }
 
-export default function App() {
+const ToastContext = createContext(() => {});
+function useToast() {
+  return useContext(ToastContext);
+}
+
+function ToastProvider({ children }) {
+  const [msg, setMsg] = useState("");
+  const opacity = useRef(new Animated.Value(0)).current;
+  const timer = useRef(null);
+
+  const show = useCallback((text) => {
+    setMsg(text);
+    if (timer.current) clearTimeout(timer.current);
+    Animated.timing(opacity, { toValue: 1, duration: 180, useNativeDriver: true }).start();
+    timer.current = setTimeout(() => {
+      Animated.timing(opacity, { toValue: 0, duration: 220, useNativeDriver: true }).start();
+    }, 1600);
+  }, [opacity]);
+
+  useEffect(() => () => timer.current && clearTimeout(timer.current), []);
+
+  return (
+    <ToastContext.Provider value={show}>
+      {children}
+      <Animated.View pointerEvents="none" style={{ position: "absolute", bottom: 92, left: 0, right: 0, alignItems: "center", opacity }}>
+        <View style={{ flexDirection: "row", alignItems: "center", gap: 8, backgroundColor: "rgba(10,10,12,0.92)", paddingHorizontal: 16, paddingVertical: 10, borderRadius: 20, borderWidth: 1, borderColor: "rgba(255,255,255,0.14)" }}>
+          <Ionicons name="checkmark-circle" size={16} color={pal.teal} />
+          <Text style={{ color: "#fff", fontSize: 13, fontWeight: "600" }}>{msg}</Text>
+        </View>
+      </Animated.View>
+    </ToastContext.Provider>
+  );
+}
+
+function Providers({ children }) {
   return (
     <SafeAreaProvider>
       <LanguageProvider>
         <RoomsProvider>
           <DeviceSettingsProvider>
             <DeviceTimersProvider>
-              <AppNavigator />
+              <ToastProvider>{children}</ToastProvider>
             </DeviceTimersProvider>
           </DeviceSettingsProvider>
         </RoomsProvider>
       </LanguageProvider>
     </SafeAreaProvider>
+  );
+}
+
+function RootShell() {
+  const [mode, setMode] = useState("phone");
+  // Top safe-area bar holds the switch; the app fills the region below it.
+  // SafeAreaView(top) consumes the top inset so nested screens don't double it.
+  return (
+    <SafeAreaView edges={["top"]} style={{ flex: 1, backgroundColor: "#0E0E12" }}>
+      <ModeSwitch mode={mode} onChange={setMode} />
+      <View style={{ flex: 1 }}>
+        {mode === "watch" ? <WatchApp /> : <AppNavigator />}
+      </View>
+    </SafeAreaView>
+  );
+}
+
+export default function App() {
+  return (
+    <Providers>
+      <RootShell />
+    </Providers>
+  );
+}
+
+// Exposed for tests / side-by-side previews.
+export function WatchPreview() {
+  return (
+    <Providers>
+      <WatchApp />
+    </Providers>
   );
 }
 
